@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EMBA Spor Kulübü Yönetim Paneli</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <section id="loginView" class="login-view">
+      <form id="loginForm" class="login-panel">
+        <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
+        <h1>EMBA Spor Kulübü</h1>
+        <p>Öğrenci, yoklama ve ödeme takip sistemine giriş yap.</p>
+        <label>Kullanıcı adı<input id="loginUsername" autocomplete="username" required></label>
+        <label>Şifre<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Giriş Yap</button>
+        <span id="loginMessage" class="form-message"></span>
+      </form>
+    </section>
+
+    <div id="appShell" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
+          <div>
+            <strong>EMBA</strong>
+            <span>Spor Kulübü</span>
+          </div>
+        </div>
+        <nav aria-label="Ana menü">
+          <button class="nav-button active" data-view="dashboardView" data-permission="dashboard:read">Panel</button>
+          <button class="nav-button" data-view="studentsView" data-permission="students:read">Öğrenciler</button>
+          <button class="nav-button" data-view="attendanceView" data-permission="attendance:read">Yoklama</button>
+          <button class="nav-button" data-view="paymentsView" data-permission="payments:read">Ödemeler</button>
+          <button class="nav-button" data-view="usersView" data-permission="users:read">Kullanıcılar</button>
+          <button class="nav-button" data-view="backupView" data-permission="backup:read">Yedekler</button>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Profesyonel Web Uygulaması</p>
+            <h1>Öğrenci Kayıt ve Takip</h1>
+          </div>
+          <div class="topbar-actions">
+            <input id="globalSearch" type="search" placeholder="Öğrenci ara">
+            <span id="userBadge" class="user-badge"></span>
+            <button id="logoutButton" class="secondary" type="button">Çıkış</button>
+          </div>
+        </header>
+
+        <p id="notice" class="notice" aria-live="polite"></p>
+
+        <section id="dashboardView" class="view active">
+          <div class="section-head">
+            <div>
+              <h2>Yönetim Paneli</h2>
+              <p>Güncel öğrenci, tahsilat ve yoklama durumu.</p>
+            </div>
+            <button id="refreshDashboardButton" class="secondary" type="button">Yenile</button>
+          </div>
+          <div id="dashboardCards" class="metric-grid"></div>
+          <div class="split-grid">
+            <section class="panel">
+              <h3>Aylık Tahsilat</h3>
+              <div id="revenueChart" class="bar-chart"></div>
+            </section>
+            <section class="panel">
+              <h3>Son 30 Gün Yoklama</h3>
+              <div id="attendanceSummary" class="status-stack"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="studentsView" class="view">
+          <div class="section-head">
+            <div>
+              <h2>Öğrenciler</h2>
+              <p id="studentCount">0 kayıt</p>
+            </div>
+            <div class="filter-row">
+              <select id="studentStatusFilter">
+                <option value="all">Tüm durumlar</option>
+                <option>Aktif</option>
+                <option>Bekleyen</option>
+                <option>Pasif</option>
+              </select>
+              <button id="newStudentButton" type="button" data-requires="students:write">Yeni Kayıt</button>
+            </div>
+          </div>
+
+          <section id="studentEditor" class="panel editor-panel hidden">
+            <form id="studentForm" class="form-grid">
+              <input id="studentId" type="hidden">
+              <label>Durum<select id="studentStatus"><option>Aktif</option><option>Bekleyen</option><option>Pasif</option></select></label>
+              <label>Öğrenci Ad Soyad<input id="studentFullName" required></label>
+              <label>Program<input id="studentProgram" value="Yüzme" required></label>
+              <label>Seviye<select id="studentLevel"><option>Başlangıç</option><option>Orta</option><option>İleri</option></select></label>
+              <label>Paket Kodu<input id="studentPackageCode" value="GRUP-YUZME"></label>
+              <label>Paket Adı<input id="studentPackageName" value="Grup Yüzme"></label>
+              <label>Veli Ad Soyad<input id="studentParentName"></label>
+              <label>Telefon<input id="studentPhone"></label>
+              <label>Aylık Toplam Seans<input id="studentTotalSessions" type="number" min="0" value="8"></label>
+              <label>Yüzme Seansı<input id="studentSwimmingSessions" type="number" min="0" value="8"></label>
+              <label>Spor Seansı<input id="studentSportSessions" type="number" min="0" value="0"></label>
+              <label>Aylık Ücret<input id="studentMonthlyFee" type="number" min="0" value="6000"></label>
+              <label>Kayıt Tarihi<input id="studentRegistrationDate" type="date"></label>
+              <label>Sosyal Medya İzni<select id="studentSocial"><option value="false">Yok</option><option value="true">Var</option></select></label>
+              <label class="span-2">Not<input id="studentNote"></label>
+              <fieldset class="lesson-grid">
+                <legend>Ders Saatleri</legend>
+                <label>1. Gün<input id="lessonDay1" placeholder="Salı"></label>
+                <label>1. Saat<input id="lessonTime1" placeholder="17:30"></label>
+                <label>2. Gün<input id="lessonDay2" placeholder="Pazar"></label>
+                <label>2. Saat<input id="lessonTime2" placeholder="10:00"></label>
+                <label>3. Gün<input id="lessonDay3"></label>
+                <label>3. Saat<input id="lessonTime3"></label>
+                <label>4. Gün<input id="lessonDay4"></label>
+                <label>4. Saat<input id="lessonTime4"></label>
+              </fieldset>
+              <div class="form-actions">
+                <button type="submit">Kaydet</button>
+                <button id="cancelStudentButton" class="secondary" type="button">Vazgeç</button>
+              </div>
+            </form>
+          </section>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Öğrenci</th>
+                  <th>Durum</th>
+                  <th>Program</th>
+                  <th>Seviye</th>
+                  <th>Veli</th>
+                  <th>Telefon</th>
+                  <th>Dersler</th>
+                  <th>İşlem</th>
+                </tr>
+              </thead>
+              <tbody id="studentTable"></tbody>
+            </table>
+          </div>
+
+          <section id="studentDetail" class="detail-panel hidden"></section>
+        </section>
+
+        <section id="attendanceView" class="view">
+          <div class="section-head">
+            <div>
+              <h2>Yoklama</h2>
+              <p>Günlük ders katılım kayıtları.</p>
+            </div>
+            <input id="attendanceDate" type="date">
+          </div>
+          <section class="panel">
+            <form id="attendanceForm" class="inline-form">
+              <label>Öğrenci<select id="attendanceStudent" required></select></label>
+              <label>Gün<input id="attendanceDay" placeholder="Salı"></label>
+              <label>Saat<input id="attendanceTime" placeholder="17:30"></label>
+              <label>Durum<select id="attendanceStatus"><option value="present">Geldi</option><option value="absent">Gelmedi</option><option value="excused">Mazeretli</option><option value="planned">Planlandı</option></select></label>
+              <label>Not<input id="attendanceNote"></label>
+              <button type="submit" data-requires="attendance:write">Kaydet</button>
+            </form>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Öğrenci</th><th>Tarih</th><th>Saat</th><th>Durum</th><th>Not</th><th>Kaydeden</th></tr></thead>
+              <tbody id="attendanceTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="paymentsView" class="view">
+          <div class="section-head">
+            <div>
+              <h2>Ödemeler</h2>
+              <p>Aylık tahsilat ve kalan tutar takibi.</p>
+            </div>
+            <input id="paymentMonthFilter" type="month">
+          </div>
+          <section class="panel">
+            <form id="paymentForm" class="inline-form">
+              <label>Öğrenci<select id="paymentStudent" required></select></label>
+              <label>Aylık Ücret<input id="paymentMonthlyFee" type="number" min="0" required></label>
+              <label>Ödenen<input id="paymentPaidAmount" type="number" min="0" required></label>
+              <label>Tarih<input id="paymentDate" type="date"></label>
+              <label>Yöntem<input id="paymentMethod" placeholder="Nakit / Havale"></label>
+              <label>Açıklama<input id="paymentDescription"></label>
+              <button type="submit" data-requires="payments:write">Ödeme Ekle</button>
+            </form>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Öğrenci</th><th>Ay</th><th>Ücret</th><th>Ödenen</th><th>Kalan</th><th>Tarih</th><th>Açıklama</th><th>İşlem</th></tr></thead>
+              <tbody id="paymentTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="usersView" class="view">
+          <div class="section-head">
+            <div>
+              <h2>Kullanıcılar</h2>
+              <p>Admin, koordinatör, antrenör ve izleyici rolleri.</p>
+            </div>
+          </div>
+          <section class="panel">
+            <form id="userForm" class="inline-form">
+              <label>Kullanıcı Adı<input id="newUsername" required></label>
+              <label>Ad Soyad<input id="newUserFullName" required></label>
+              <label>Rol<select id="newUserRole"><option value="koordinator">Koordinatör</option><option value="antrenor">Antrenör</option><option value="izleyici">İzleyici</option><option value="admin">Admin</option></select></label>
+              <label>Şifre<input id="newUserPassword" type="password" minlength="8" required></label>
+              <button type="submit" data-requires="users:write">Kullanıcı Ekle</button>
+            </form>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Kullanıcı</th><th>Rol</th><th>Durum</th><th>Yetkiler</th></tr></thead>
+              <tbody id="userTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="backupView" class="view">
+          <div class="section-head">
+            <div>
+              <h2>Yedekler</h2>
+              <p>PostgreSQL verilerinden oluşturulan JSON arşivleri.</p>
+            </div>
+            <button id="runBackupButton" type="button" data-requires="backup:run">Yedek Al</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Dosya</th><th>Boyut</th><th>Kayıt Sayıları</th><th>Tarih</th></tr></thead>
+              <tbody id="backupTable"></tbody>
+            </table>
+          </div>
+          <section class="panel">
+            <h3>İşlem Kayıtları</h3>
+            <div id="auditLogList" class="audit-list"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
