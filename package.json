@@ -7,8 +7,10 @@
     "start": "node src/server.js",
     "dev": "node src/server.js",
     "migrate": "node scripts/migrate.js",
+    "migration:status": "node scripts/migration-status.js",
     "create-admin": "node scripts/create-admin.js",
-    "import-legacy": "node scripts/import-legacy-data.js"
+    "import-legacy": "node scripts/import-legacy-data.js",
+    "preflight:saas": "node scripts/preflight-saas-check.js"
   },
   "engines": {
     "node": ">=20"
