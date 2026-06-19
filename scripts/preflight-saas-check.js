@@ -96,6 +96,28 @@ async function getNullCount(tableName, columnName) {
   return result.rows[0]?.null_count || "0";
 }
 
+async function getWhereCount(tableName, whereSql, params = []) {
+  if (!(await tableExists(tableName))) return null;
+  const result = await query(
+    `SELECT COUNT(*)::BIGINT AS row_count
+     FROM ${quoteIdentifier(SCHEMA)}.${quoteIdentifier(tableName)}
+     WHERE ${whereSql}`,
+    params
+  );
+  return result.rows[0]?.row_count || "0";
+}
+
+async function getRoleDistribution() {
+  if (!(await tableExists("users"))) return [];
+  const result = await query(
+    `SELECT role, COUNT(*)::BIGINT AS row_count
+     FROM users
+     GROUP BY role
+     ORDER BY role`
+  );
+  return result.rows;
+}
+
 async function getEmbaClub() {
   if (!(await tableExists("clubs"))) return null;
   const result = await query(
@@ -231,6 +253,20 @@ async function main() {
     const nullCount = await getNullCount(tableName, "branch_id");
     process.stdout.write(`${tableName}: ${nullCount === null ? "branch_id kolonu yok veya tablo yok" : `${nullCount} NULL kayit`}\n`);
   }
+
+  printSection("Backend tenant guvenlik veri kontrolu");
+  const roleDistribution = await getRoleDistribution();
+  process.stdout.write(`users.club_id NULL: ${await getNullCount("users", "club_id") ?? "kontrol edilemedi"}\n`);
+  process.stdout.write(`payments.club_id NULL: ${await getNullCount("payments", "club_id") ?? "kontrol edilemedi"}\n`);
+  process.stdout.write(`attendance_records.club_id NULL: ${await getNullCount("attendance_records", "club_id") ?? "kontrol edilemedi"}\n`);
+  process.stdout.write(`coach/antrenor kullanici sayisi: ${await getWhereCount("users", "role IN ('coach', 'antrenor')") ?? "kontrol edilemedi"}\n`);
+  process.stdout.write(`student_lessons.trainer_user_id dolu: ${await getWhereCount("student_lessons", "trainer_user_id IS NOT NULL") ?? "kontrol edilemedi"}\n`);
+  process.stdout.write(`student_lessons.trainer_user_id NULL: ${await getNullCount("student_lessons", "trainer_user_id") ?? "kontrol edilemedi"}\n`);
+  process.stdout.write("Rol dagilimi:\n");
+  printList(
+    roleDistribution.map((row) => `${row.role}: ${row.row_count}`),
+    "Kullanici rolu bulunamadi"
+  );
 
   printSection("Ana veri sayisi referans kontrolu");
   for (const [tableName, expectedCount] of Object.entries(REFERENCE_COUNTS)) {
