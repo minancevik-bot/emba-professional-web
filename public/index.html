@@ -8,19 +8,42 @@
   </head>
   <body>
     <section id="loginView" class="login-view">
-      <form id="loginForm" class="login-panel">
-        <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
-        <h1>EMBA Spor Kulübü</h1>
-        <p>Öğrenci, yoklama ve ödeme takip sistemine giriş yap.</p>
-        <label>Kullanıcı adı<input id="loginUsername" autocomplete="username" required></label>
-        <label>Şifre<input id="loginPassword" type="password" autocomplete="current-password" required></label>
-        <button type="submit">Giriş Yap</button>
-        <span id="loginMessage" class="form-message"></span>
-      </form>
+      <div class="login-shell">
+        <div class="login-brand-panel">
+          <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
+          <h1>EMBA Spor Kulübü Yönetim Paneli</h1>
+          <p>Öğrenci, yoklama ve ödeme yönetimi</p>
+        </div>
+        <form id="loginForm" class="login-panel">
+          <div>
+            <p class="eyebrow">Güvenli giriş</p>
+            <h2>Panele giriş yap</h2>
+          </div>
+          <label>Kullanıcı adı
+            <input id="loginUsername" name="username" autocomplete="username" required>
+          </label>
+          <label>Şifre
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <label class="check-row">
+            <input id="rememberMe" type="checkbox" autocomplete="off">
+            <span>Beni hatırla</span>
+          </label>
+          <button type="submit" class="primary-action">Giriş Yap</button>
+          <span id="loginMessage" class="form-message" aria-live="polite"></span>
+        </form>
+      </div>
     </section>
 
     <div id="appShell" class="app-shell hidden">
-      <aside class="sidebar">
+      <div id="sidebarOverlay" class="sidebar-overlay" hidden></div>
+      <header class="mobile-header">
+        <button id="mobileMenuButton" class="icon-button" type="button" aria-label="Menüyü aç">☰</button>
+        <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
+        <strong>EMBA Panel</strong>
+      </header>
+
+      <aside id="sidebar" class="sidebar">
         <div class="brand">
           <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
           <div>
@@ -29,23 +52,24 @@
           </div>
         </div>
         <nav aria-label="Ana menü">
-          <button class="nav-button active" data-view="dashboardView" data-permission="dashboard:read">Panel</button>
-          <button class="nav-button" data-view="studentsView" data-permission="students:read">Öğrenciler</button>
-          <button class="nav-button" data-view="attendanceView" data-permission="attendance:read">Yoklama</button>
-          <button class="nav-button" data-view="paymentsView" data-permission="payments:read">Ödemeler</button>
-          <button class="nav-button" data-view="usersView" data-permission="users:read">Kullanıcılar</button>
-          <button class="nav-button" data-view="backupView" data-permission="backup:read">Yedekler</button>
+          <button class="nav-button active" data-view="dashboardView" data-permission="dashboard:read"><span>Panel</span></button>
+          <button class="nav-button" data-view="studentsView" data-permission="students:read"><span>Öğrenciler</span></button>
+          <button class="nav-button" data-view="attendanceView" data-permission="attendance:read"><span>Yoklama</span></button>
+          <button class="nav-button" data-view="paymentsView" data-permission="payments:read"><span>Ödemeler</span></button>
+          <button class="nav-button" data-view="usersView" data-permission="users:read"><span>Kullanıcılar</span></button>
+          <button class="nav-button" data-view="backupView" data-permission="backup:read"><span>Raporlar</span></button>
         </nav>
       </aside>
 
       <main class="content">
         <header class="topbar">
-          <div>
-            <p class="eyebrow">Profesyonel Web Uygulaması</p>
-            <h1>Öğrenci Kayıt ve Takip</h1>
+          <div class="page-title-block">
+            <p class="eyebrow">EMBA Spor Kulübü</p>
+            <h1 id="pageTitle">Yönetim Paneli</h1>
+            <p id="pageSubtitle">Kulüp operasyonlarını tek ekrandan takip edin.</p>
           </div>
           <div class="topbar-actions">
-            <input id="globalSearch" type="search" placeholder="Öğrenci ara">
+            <input id="globalSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
             <span id="userBadge" class="user-badge"></span>
             <button id="logoutButton" class="secondary" type="button">Çıkış</button>
           </div>
@@ -54,22 +78,53 @@
         <p id="notice" class="notice" aria-live="polite"></p>
 
         <section id="dashboardView" class="view active">
-          <div class="section-head">
+          <div class="dashboard-hero">
+            <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
             <div>
-              <h2>Yönetim Paneli</h2>
-              <p>Güncel öğrenci, tahsilat ve yoklama durumu.</p>
+              <p class="eyebrow">Canlı operasyon özeti</p>
+              <h2>EMBA Spor Kulübü Yönetim Paneli</h2>
+              <p>Öğrenci, yoklama ve tahsilat durumunu kulüp ölçeğinde izleyin.</p>
             </div>
             <button id="refreshDashboardButton" class="secondary" type="button">Yenile</button>
           </div>
+
           <div id="dashboardCards" class="metric-grid"></div>
-          <div class="split-grid">
+
+          <div class="dashboard-grid">
             <section class="panel">
-              <h3>Aylık Tahsilat</h3>
+              <div class="panel-head">
+                <h3>Bugünkü Ders Saatleri</h3>
+                <span class="soft-pill">Program</span>
+              </div>
+              <div id="todayLessons" class="compact-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Yoklama Durumu</h3>
+                <span class="soft-pill">Son 30 gün</span>
+              </div>
+              <div id="attendanceSummary" class="status-stack"></div>
+            </section>
+            <section class="panel wide-panel">
+              <div class="panel-head">
+                <h3>Aylık Tahsilat</h3>
+                <span class="soft-pill">Finans</span>
+              </div>
               <div id="revenueChart" class="bar-chart"></div>
             </section>
             <section class="panel">
-              <h3>Son 30 Gün Yoklama</h3>
-              <div id="attendanceSummary" class="status-stack"></div>
+              <div class="panel-head">
+                <h3>Son Eklenen Öğrenciler</h3>
+                <span class="soft-pill">Kayıt</span>
+              </div>
+              <div id="recentStudents" class="compact-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Ödeme Bekleyenler</h3>
+                <span class="soft-pill">Takip</span>
+              </div>
+              <div id="paymentWaiting" class="compact-list"></div>
             </section>
           </div>
         </section>
@@ -92,52 +147,76 @@
           </div>
 
           <section id="studentEditor" class="panel editor-panel hidden">
-            <form id="studentForm" class="form-grid">
+            <form id="studentForm">
               <input id="studentId" type="hidden">
-              <label>Durum<select id="studentStatus"><option>Aktif</option><option>Bekleyen</option><option>Pasif</option></select></label>
-              <label>Öğrenci Ad Soyad<input id="studentFullName" required></label>
-              <label>Program<input id="studentProgram" value="Yüzme" required></label>
-              <label>Seviye<select id="studentLevel"><option>Başlangıç</option><option>Orta</option><option>İleri</option></select></label>
-              <label>Paket Kodu<input id="studentPackageCode" value="GRUP-YUZME"></label>
-              <label>Paket Adı<input id="studentPackageName" value="Grup Yüzme"></label>
-              <label>Veli Ad Soyad<input id="studentParentName"></label>
-              <label>Telefon<input id="studentPhone"></label>
-              <label>Aylık Toplam Seans<input id="studentTotalSessions" type="number" min="0" value="8"></label>
-              <label>Yüzme Seansı<input id="studentSwimmingSessions" type="number" min="0" value="8"></label>
-              <label>Spor Seansı<input id="studentSportSessions" type="number" min="0" value="0"></label>
-              <label>Aylık Ücret<input id="studentMonthlyFee" type="number" min="0" value="6000"></label>
-              <label>Kayıt Tarihi<input id="studentRegistrationDate" type="date"></label>
-              <label>Sosyal Medya İzni<select id="studentSocial"><option value="false">Yok</option><option value="true">Var</option></select></label>
-              <label class="span-2">Not<input id="studentNote"></label>
-              <fieldset class="lesson-grid">
-                <legend>Ders Saatleri</legend>
-                <label>1. Gün<input id="lessonDay1" placeholder="Salı"></label>
-                <label>1. Saat<input id="lessonTime1" placeholder="17:30"></label>
-                <label>2. Gün<input id="lessonDay2" placeholder="Pazar"></label>
-                <label>2. Saat<input id="lessonTime2" placeholder="10:00"></label>
-                <label>3. Gün<input id="lessonDay3"></label>
-                <label>3. Saat<input id="lessonTime3"></label>
-                <label>4. Gün<input id="lessonDay4"></label>
-                <label>4. Saat<input id="lessonTime4"></label>
-              </fieldset>
+              <div class="form-section">
+                <h3>A. Öğrenci Bilgileri</h3>
+                <div class="form-grid">
+                  <label>Ad soyad<input id="studentFullName" required autocomplete="name"></label>
+                  <label>Doğum yılı<input id="studentBirthYear" type="number" min="1990" max="2035"></label>
+                  <label>Yaş grubu<input id="studentAgeGroup" placeholder="7-9 / 10-12"></label>
+                  <label>Seviye<select id="studentLevel"><option>Başlangıç</option><option>Orta</option><option>İleri</option></select></label>
+                  <label>Program<input id="studentProgram" value="Yüzme" required></label>
+                  <label>Durum<select id="studentStatus"><option>Aktif</option><option>Bekleyen</option><option>Pasif</option></select></label>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <h3>B. Veli Bilgileri</h3>
+                <div class="form-grid">
+                  <label>Veli adı<input id="studentParentName" autocomplete="name"></label>
+                  <label>Telefon<input id="studentPhone" autocomplete="tel"></label>
+                  <label>Alternatif telefon<input id="studentAlternatePhone" autocomplete="tel"></label>
+                  <label class="span-2">Not<input id="studentNote"></label>
+                  <label>Sosyal medya izni<select id="studentSocial"><option value="false">Yok</option><option value="true">Var</option></select></label>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <h3>C. Ders Bilgileri</h3>
+                <div class="lesson-grid">
+                  <label>1. Gün<input id="lessonDay1" placeholder="Salı"></label>
+                  <label>1. Saat<input id="lessonTime1" placeholder="17:30"></label>
+                  <label>2. Gün<input id="lessonDay2" placeholder="Pazar"></label>
+                  <label>2. Saat<input id="lessonTime2" placeholder="10:00"></label>
+                  <label>3. Gün<input id="lessonDay3"></label>
+                  <label>3. Saat<input id="lessonTime3"></label>
+                  <label>4. Gün<input id="lessonDay4"></label>
+                  <label>4. Saat<input id="lessonTime4"></label>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <h3>D. Ödeme Bilgileri</h3>
+                <div class="form-grid">
+                  <label>Paket kodu<input id="studentPackageCode" value="GRUP-YUZME"></label>
+                  <label>Paket adı<input id="studentPackageName" value="Grup Yüzme"></label>
+                  <label>Aylık toplam seans<input id="studentTotalSessions" type="number" min="0" value="8"></label>
+                  <label>Yüzme seansı<input id="studentSwimmingSessions" type="number" min="0" value="8"></label>
+                  <label>Spor seansı<input id="studentSportSessions" type="number" min="0" value="0"></label>
+                  <label>Aylık ücret<input id="studentMonthlyFee" type="number" min="0" value="6000"></label>
+                  <label>Kayıt tarihi<input id="studentRegistrationDate" type="date"></label>
+                </div>
+              </div>
+
               <div class="form-actions">
                 <button type="submit">Kaydet</button>
-                <button id="cancelStudentButton" class="secondary" type="button">Vazgeç</button>
+                <button id="cancelStudentButton" class="secondary" type="button">İptal</button>
               </div>
             </form>
           </section>
 
-          <div class="table-wrap">
-            <table>
+          <div class="table-card">
+            <table class="responsive-table">
               <thead>
                 <tr>
-                  <th>Öğrenci</th>
-                  <th>Durum</th>
-                  <th>Program</th>
-                  <th>Seviye</th>
+                  <th>Kayıt No</th>
+                  <th>Ad Soyad</th>
+                  <th>Branş / Program</th>
+                  <th>Grup / Saat</th>
                   <th>Veli</th>
                   <th>Telefon</th>
-                  <th>Dersler</th>
+                  <th>Durum</th>
                   <th>İşlem</th>
                 </tr>
               </thead>
@@ -152,7 +231,7 @@
           <div class="section-head">
             <div>
               <h2>Yoklama</h2>
-              <p>Günlük ders katılım kayıtları.</p>
+              <p>Mobilde hızlı, masaüstünde düzenli yoklama takibi.</p>
             </div>
             <input id="attendanceDate" type="date">
           </div>
@@ -166,8 +245,9 @@
               <button type="submit" data-requires="attendance:write">Kaydet</button>
             </form>
           </section>
-          <div class="table-wrap">
-            <table>
+          <div id="attendanceCards" class="attendance-cards"></div>
+          <div class="table-card">
+            <table class="responsive-table">
               <thead><tr><th>Öğrenci</th><th>Tarih</th><th>Saat</th><th>Durum</th><th>Not</th><th>Kaydeden</th></tr></thead>
               <tbody id="attendanceTable"></tbody>
             </table>
@@ -180,12 +260,22 @@
               <h2>Ödemeler</h2>
               <p>Aylık tahsilat ve kalan tutar takibi.</p>
             </div>
-            <input id="paymentMonthFilter" type="month">
+            <div class="filter-row">
+              <input id="paymentMonthFilter" type="month">
+              <input id="paymentSearch" type="search" placeholder="Öğrenci veya veli ara" autocomplete="off">
+              <select id="paymentStatusFilter">
+                <option value="all">Tümü</option>
+                <option value="paid">Ödendi</option>
+                <option value="partial">Kısmi</option>
+                <option value="unpaid">Ödenmedi</option>
+              </select>
+            </div>
           </div>
+          <div id="paymentStats" class="metric-grid compact-metrics"></div>
           <section class="panel">
             <form id="paymentForm" class="inline-form">
               <label>Öğrenci<select id="paymentStudent" required></select></label>
-              <label>Aylık Ücret<input id="paymentMonthlyFee" type="number" min="0" required></label>
+              <label>Aylık ücret<input id="paymentMonthlyFee" type="number" min="0" required></label>
               <label>Ödenen<input id="paymentPaidAmount" type="number" min="0" required></label>
               <label>Tarih<input id="paymentDate" type="date"></label>
               <label>Yöntem<input id="paymentMethod" placeholder="Nakit / Havale"></label>
@@ -193,9 +283,9 @@
               <button type="submit" data-requires="payments:write">Ödeme Ekle</button>
             </form>
           </section>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Öğrenci</th><th>Ay</th><th>Ücret</th><th>Ödenen</th><th>Kalan</th><th>Tarih</th><th>Açıklama</th><th>İşlem</th></tr></thead>
+          <div class="table-card">
+            <table class="responsive-table">
+              <thead><tr><th>Öğrenci</th><th>Veli</th><th>Telefon</th><th>Ay</th><th>Ücret</th><th>Ödenen</th><th>Kalan</th><th>Durum</th><th>İşlem</th></tr></thead>
               <tbody id="paymentTable"></tbody>
             </table>
           </div>
@@ -205,21 +295,21 @@
           <div class="section-head">
             <div>
               <h2>Kullanıcılar</h2>
-              <p>Admin, koordinatör, antrenör ve izleyici rolleri.</p>
+              <p>Rol ve durum bilgileri kulüp bazlı yönetilir.</p>
             </div>
           </div>
           <section class="panel">
             <form id="userForm" class="inline-form">
-              <label>Kullanıcı Adı<input id="newUsername" required></label>
-              <label>Ad Soyad<input id="newUserFullName" required></label>
-              <label>Rol<select id="newUserRole"><option value="koordinator">Koordinatör</option><option value="antrenor">Antrenör</option><option value="izleyici">İzleyici</option><option value="admin">Admin</option></select></label>
-              <label>Şifre<input id="newUserPassword" type="password" minlength="8" required></label>
+              <label>Kullanıcı adı<input id="newUsername" autocomplete="username" required></label>
+              <label>Ad soyad<input id="newUserFullName" autocomplete="name" required></label>
+              <label>Rol<select id="newUserRole"><option value="coordinator">Coordinator</option><option value="coach">Coach</option><option value="assistant">Assistant</option><option value="viewer">Viewer</option><option value="manager">Manager</option></select></label>
+              <label>Şifre<input id="newUserPassword" type="password" autocomplete="new-password" minlength="8" required></label>
               <button type="submit" data-requires="users:write">Kullanıcı Ekle</button>
             </form>
           </section>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Kullanıcı</th><th>Rol</th><th>Durum</th><th>Yetkiler</th></tr></thead>
+          <div class="table-card">
+            <table class="responsive-table">
+              <thead><tr><th>Kullanıcı adı</th><th>Ad soyad</th><th>Rol</th><th>Durum</th><th>Kulüp</th><th>Yetki özeti</th></tr></thead>
               <tbody id="userTable"></tbody>
             </table>
           </div>
@@ -228,19 +318,22 @@
         <section id="backupView" class="view">
           <div class="section-head">
             <div>
-              <h2>Yedekler</h2>
-              <p>PostgreSQL verilerinden oluşturulan JSON arşivleri.</p>
+              <h2>Raporlar</h2>
+              <p>Yedekler ve son işlem kayıtları.</p>
             </div>
             <button id="runBackupButton" type="button" data-requires="backup:run">Yedek Al</button>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Dosya</th><th>Boyut</th><th>Kayıt Sayıları</th><th>Tarih</th></tr></thead>
+          <div class="table-card">
+            <table class="responsive-table">
+              <thead><tr><th>Dosya</th><th>Boyut</th><th>Kayıt sayıları</th><th>Tarih</th></tr></thead>
               <tbody id="backupTable"></tbody>
             </table>
           </div>
           <section class="panel">
-            <h3>İşlem Kayıtları</h3>
+            <div class="panel-head">
+              <h3>Son İşlemler</h3>
+              <span class="soft-pill">Audit</span>
+            </div>
             <div id="auditLogList" class="audit-list"></div>
           </section>
         </section>
