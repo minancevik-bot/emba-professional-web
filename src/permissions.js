@@ -29,6 +29,7 @@ const ALL_PERMISSIONS = [
   "students:read",
   "students:write",
   "students:delete",
+  "students:import",
   "attendance:read",
   "attendance:write",
   "payments:read",
@@ -48,6 +49,7 @@ const ROLE_PERMISSIONS = {
     "dashboard:read",
     "students:read",
     "students:write",
+    "students:import",
     "attendance:read",
     "attendance:write",
     "payments:read",
@@ -56,6 +58,7 @@ const ROLE_PERMISSIONS = {
   coach: [
     "dashboard:read",
     "students:read",
+    "students:write",
     "attendance:read",
     "attendance:write"
   ],
@@ -86,19 +89,28 @@ const USER_CREATABLE_ROLES = [
 ];
 
 const DATABASE_ROLE_ALIASES = {
-  manager: "admin",
-  coordinator: "koordinator",
+  manager: "manager",
+  coordinator: "coordinator",
   coach: "coach",
   assistant: "assistant",
   viewer: "viewer",
-  admin: "admin",
-  koordinator: "koordinator",
-  antrenor: "antrenor",
-  izleyici: "izleyici"
+  admin: "manager",
+  koordinator: "coordinator",
+  antrenor: "coach",
+  izleyici: "viewer"
 };
 
 function normalizeRole(role) {
   return ROLE_ALIASES[String(role || "").trim()] || "viewer";
+}
+
+function normalizeUserRole(user) {
+  const username = String(user?.username || "").trim().toLowerCase();
+  const role = String(user?.role || user?.normalizedRole || "").trim();
+  if (username === "admin" && role === "admin") {
+    return "super_admin";
+  }
+  return normalizeRole(role);
 }
 
 function roleLabel(role) {
@@ -111,15 +123,15 @@ function permissionsFor(role) {
 
 function can(user, permission) {
   if (!user || !permission) return false;
-  return permissionsFor(user.normalizedRole || user.role).includes(permission);
+  return permissionsFor(normalizeUserRole(user)).includes(permission);
 }
 
 function isSuperAdmin(user) {
-  return normalizeRole(user?.normalizedRole || user?.role) === "super_admin";
+  return normalizeUserRole(user) === "super_admin";
 }
 
 function isCoach(user) {
-  return normalizeRole(user?.normalizedRole || user?.role) === "coach";
+  return normalizeUserRole(user) === "coach";
 }
 
 function normalizeCreatableRole(role, actor) {
@@ -138,6 +150,7 @@ module.exports = {
   USER_CREATABLE_ROLES,
   DATABASE_ROLE_ALIASES,
   normalizeRole,
+  normalizeUserRole,
   roleLabel,
   permissionsFor,
   can,

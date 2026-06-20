@@ -2,6 +2,8 @@ require("./env").loadEnv();
 
 const path = require("path");
 const express = require("express");
+const multer = require("multer");
+const readXlsxFile = require("read-excel-file/node");
 const { pool, query, transaction } = require("./db");
 const {
   hashPassword,
@@ -17,7 +19,7 @@ const {
   roleLabel,
   permissionsFor,
   can,
-  normalizeRole,
+  normalizeUserRole,
   isSuperAdmin,
   isCoach,
   normalizeCreatableRole
@@ -27,6 +29,10 @@ const { runBackup, scheduleBackups } = require("./backup");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "2mb" }));
@@ -46,14 +52,14 @@ function asyncHandler(handler) {
 
 function publicUser(user) {
   if (!user) return null;
-  const normalizedRole = user.normalizedRole || normalizeRole(user.role);
+  const normalizedRole = user.normalizedRole || normalizeUserRole(user);
   return {
     id: user.id,
     username: user.username,
     fullName: user.full_name || user.fullName,
     role: user.role,
     normalizedRole,
-    roleLabel: roleLabel(user.role),
+    roleLabel: roleLabel(normalizedRole),
     clubId: user.club_id || user.clubId || null,
     active: user.active,
     permissions: permissionsFor(normalizedRole)
@@ -86,12 +92,35 @@ async function defaultBranchId(client, clubId) {
   return rows[0]?.id || null;
 }
 
+async function ensureDefaultBranchId(client, clubId) {
+  const existing = await defaultBranchId(client, clubId);
+  if (existing) return existing;
+  const { rows } = await client.query(
+    `INSERT INTO branches (club_id, name, type, active)
+     VALUES ($1, $2, 'branch', TRUE)
+     RETURNING id`,
+    [clubId, "Ana Şube / Ana Salon"]
+  );
+  return rows[0]?.id || null;
+}
+
 function getUserClubId(user) {
   return user?.club_id || user?.clubId || null;
 }
 
+function getSelectedClubId(request) {
+  const value = request.query.clubId || request.body?.clubId || request.headers["x-club-id"];
+  const clubId = Number(value);
+  return Number.isInteger(clubId) && clubId > 0 ? clubId : null;
+}
+
 function addTenantFilter(filters, params, user, alias) {
-  if (isSuperAdmin(user)) return;
+  if (isSuperAdmin(user)) {
+    if (!user?.selectedClubId) return;
+    params.push(user.selectedClubId);
+    filters.push(`${alias}.club_id = $${params.length}`);
+    return;
+  }
   const clubId = getUserClubId(user);
   if (!clubId) {
     filters.push("1 = 0");
@@ -105,12 +134,22 @@ function addStudentAccessFilter(filters, params, user, alias = "s") {
   addTenantFilter(filters, params, user, alias);
   if (!isCoach(user)) return;
   params.push(user.id);
+  const userParam = params.length;
   filters.push(
-    `EXISTS (
-      SELECT 1
-      FROM student_lessons scope_lessons
-      WHERE scope_lessons.student_id = ${alias}.id
-        AND scope_lessons.trainer_user_id = $${params.length}
+    `(
+      ${alias}.created_by = $${userParam}
+      OR EXISTS (
+        SELECT 1
+        FROM student_lessons scope_lessons
+        WHERE scope_lessons.student_id = ${alias}.id
+          AND scope_lessons.trainer_user_id = $${userParam}
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM attendance_records scope_attendance
+        WHERE scope_attendance.student_id = ${alias}.id
+          AND scope_attendance.recorded_by = $${userParam}
+      )
     )`
   );
 }
@@ -119,14 +158,7 @@ function addAttendanceAccessFilter(filters, params, user, attendanceAlias = "a")
   addTenantFilter(filters, params, user, attendanceAlias);
   if (!isCoach(user)) return;
   params.push(user.id);
-  filters.push(
-    `EXISTS (
-      SELECT 1
-      FROM student_lessons scope_lessons
-      WHERE scope_lessons.student_id = ${attendanceAlias}.student_id
-        AND scope_lessons.trainer_user_id = $${params.length}
-    )`
-  );
+  filters.push(`${attendanceAlias}.recorded_by = $${params.length}`);
 }
 
 function whereClause(filters) {
@@ -134,7 +166,7 @@ function whereClause(filters) {
 }
 
 async function resolveWriteClubId(client, request) {
-  if (isSuperAdmin(request.user) && request.body?.clubId) return Number(request.body.clubId);
+  if (isSuperAdmin(request.user)) return getSelectedClubId(request);
   return getUserClubId(request.user) || defaultClubId(client);
 }
 
@@ -187,7 +219,8 @@ async function requireAuth(request, response, next) {
     return;
   }
 
-  user.normalizedRole = normalizeRole(user.role);
+  user.normalizedRole = normalizeUserRole(user);
+  user.selectedClubId = getSelectedClubId(request);
   if (!isSuperAdmin(user) && !user.club_id) {
     user.club_id = await defaultClubId();
   }
@@ -214,6 +247,14 @@ function requirePermission(permission) {
   };
 }
 
+function requireSelectedClubForSuperAdmin(request, response, next) {
+  if (isSuperAdmin(request.user) && !request.user.selectedClubId) {
+    response.status(400).json({ error: "Once KulupAsist Merkez uzerinden bir kulup secilmelidir." });
+    return;
+  }
+  next();
+}
+
 function numberValue(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -228,6 +269,82 @@ function boolValue(value) {
   return value === true || value === "true" || value === "on" || value === 1 || value === "1";
 }
 
+function slugify(value) {
+  const map = {
+    ç: "c",
+    Ç: "c",
+    ğ: "g",
+    Ğ: "g",
+    ı: "i",
+    I: "i",
+    İ: "i",
+    ö: "o",
+    Ö: "o",
+    ş: "s",
+    Ş: "s",
+    ü: "u",
+    Ü: "u"
+  };
+  return String(value || "")
+    .replace(/[çÇğĞıIİöÖşŞüÜ]/g, (letter) => map[letter] || letter)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+function clubPayload(body) {
+  const name = nullableText(body.name);
+  const statusValue = body.status === "passive" ? "inactive" : body.status;
+  return {
+    name,
+    slug: slugify(body.slug || name),
+    logoUrl: nullableText(body.logoUrl),
+    phone: nullableText(body.phone),
+    email: nullableText(body.email),
+    city: nullableText(body.city),
+    district: nullableText(body.district),
+    address: nullableText(body.address),
+    status: ["active", "inactive", "suspended"].includes(statusValue) ? statusValue : "active",
+    plan: ["free", "standard", "owner", "pro", "enterprise"].includes(body.plan) ? body.plan : "standard"
+  };
+}
+
+function optionalClubUserPayload(body) {
+  const user = body?.user || {};
+  const createUser = body?.createUser === true || body?.createUser === "true";
+  if (!createUser) return null;
+  return {
+    username: nullableText(user.username || body.adminUsername),
+    fullName: nullableText(user.fullName || body.adminFullName),
+    role: normalizeCreatableRole(user.role || body.adminRole || "manager"),
+    password: String(user.password || body.adminPassword || "")
+  };
+}
+
+function mapClub(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    logoUrl: row.logo_url,
+    phone: row.phone,
+    email: row.email,
+    city: row.city,
+    district: row.district,
+    address: row.address,
+    status: row.status,
+    plan: row.plan,
+    studentCount: Number(row.student_count || 0),
+    activeStudentCount: Number(row.active_student_count || 0),
+    userCount: Number(row.user_count || 0),
+    currentMonthPaid: Number(row.current_month_paid || 0),
+    currentMonthDebt: Number(row.current_month_debt || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function normalizePeriodMonth(value) {
   const input = String(value || "").trim();
   if (/^\d{4}-\d{2}$/.test(input)) return `${input}-01`;
@@ -237,6 +354,15 @@ function normalizePeriodMonth(value) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function dayNameForDate(value) {
+  const date = new Date(`${value || today()}T12:00:00`);
+  return new Intl.DateTimeFormat("tr-TR", { weekday: "long" }).format(date);
+}
+
+function normalizeAttendanceStatus(value) {
+  return ["present", "absent"].includes(value) ? value : "present";
 }
 
 function studentPayload(body) {
@@ -260,8 +386,8 @@ function studentPayload(body) {
   };
 }
 
-function mapStudent(row) {
-  return {
+function mapStudent(row, user = null) {
+  const student = {
     id: row.id,
     status: row.status,
     fullName: row.full_name,
@@ -282,6 +408,15 @@ function mapStudent(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+  if (isCoach(user)) {
+    delete student.packageCode;
+    delete student.packageName;
+    delete student.monthlyTotalSessions;
+    delete student.monthlySwimmingSessions;
+    delete student.monthlySportSessions;
+    delete student.monthlyFee;
+  }
+  return student;
 }
 
 function mapPayment(row) {
@@ -316,6 +451,164 @@ function mapAttendance(row) {
   };
 }
 
+const IMPORT_COLUMN_ALIASES = {
+  fullName: ["ad_soyad", "ogrenci_adi", "adsoyad", "name", "full_name", "fullname"],
+  parentName: ["veli_adi", "veli", "parent_name", "parentname"],
+  phone: ["telefon", "veli_telefon", "phone"],
+  program: ["brans", "program", "ders", "branch"],
+  level: ["seviye", "level"],
+  day: ["gun", "ders_gunu", "day"],
+  time: ["saat", "ders_saati", "time"],
+  monthlyFee: ["aylik_ucret", "ucret", "fee", "monthly_fee", "monthlyfee"],
+  status: ["durum", "status"],
+  note: ["not", "aciklama", "notes"]
+};
+
+function normalizeImportHeader(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[ıİ]/g, "i")
+    .replace(/[ğĞ]/g, "g")
+    .replace(/[üÜ]/g, "u")
+    .replace(/[şŞ]/g, "s")
+    .replace(/[öÖ]/g, "o")
+    .replace(/[çÇ]/g, "c")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function importCell(row, aliases) {
+  for (const [key, value] of Object.entries(row)) {
+    if (aliases.includes(normalizeImportHeader(key))) {
+      return String(value ?? "").trim();
+    }
+  }
+  return "";
+}
+
+function normalizeImportStatus(value) {
+  const text = normalizeImportHeader(value);
+  if (["pasif", "passive", "inactive"].includes(text)) return "Pasif";
+  if (["bekleyen", "waiting", "pending"].includes(text)) return "Bekleyen";
+  return "Aktif";
+}
+
+function normalizeImportedStudent(row, rowNumber) {
+  const monthlyFeeRaw = importCell(row, IMPORT_COLUMN_ALIASES.monthlyFee);
+  const monthlyFee = Number(String(monthlyFeeRaw).replace(/\./g, "").replace(",", "."));
+  const normalized = {
+    rowNumber,
+    fullName: importCell(row, IMPORT_COLUMN_ALIASES.fullName),
+    parentName: importCell(row, IMPORT_COLUMN_ALIASES.parentName),
+    phone: importCell(row, IMPORT_COLUMN_ALIASES.phone),
+    program: importCell(row, IMPORT_COLUMN_ALIASES.program) || "Yüzme",
+    level: importCell(row, IMPORT_COLUMN_ALIASES.level) || "Başlangıç",
+    day: importCell(row, IMPORT_COLUMN_ALIASES.day),
+    time: importCell(row, IMPORT_COLUMN_ALIASES.time),
+    monthlyFee: Number.isFinite(monthlyFee) && monthlyFee > 0 ? monthlyFee : 0,
+    status: normalizeImportStatus(importCell(row, IMPORT_COLUMN_ALIASES.status)),
+    note: importCell(row, IMPORT_COLUMN_ALIASES.note)
+  };
+  const errors = [];
+  if (!normalized.fullName) errors.push("Ogrenci adi zorunludur.");
+  if (monthlyFeeRaw && !Number.isFinite(monthlyFee)) errors.push("Ucret sayisal olmalidir.");
+  return { ...normalized, errors };
+}
+
+function parseCsvLine(line, delimiter) {
+  const values = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      value += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      values.push(value.trim());
+      value = "";
+    } else {
+      value += char;
+    }
+  }
+  values.push(value.trim());
+  return values;
+}
+
+function rowsFromCsv(buffer) {
+  const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const delimiter = lines[0].includes(";") ? ";" : ",";
+  const headers = parseCsvLine(lines[0], delimiter);
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line, delimiter);
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] || ""]));
+  });
+}
+
+async function rowsFromSpreadsheet(file) {
+  const extension = path.extname(file.originalname || "").toLowerCase();
+  if (extension === ".csv") return rowsFromCsv(file.buffer);
+  const matrix = await readXlsxFile(file.buffer);
+  if (!matrix.length) return [];
+  const headers = matrix[0].map((value) => String(value || "").trim());
+  return matrix.slice(1).map((values) => (
+    Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]))
+  ));
+}
+
+async function existingStudentKeys(client, clubId) {
+  const { rows } = await client.query(
+    "SELECT full_name, phone FROM students WHERE club_id = $1",
+    [clubId]
+  );
+  return {
+    byName: new Set(rows.map((row) => normalizeImportHeader(row.full_name))),
+    byNamePhone: new Set(rows.map((row) => `${normalizeImportHeader(row.full_name)}|${String(row.phone || "").replace(/\D/g, "")}`))
+  };
+}
+
+function isDuplicateImport(student, keys) {
+  const nameKey = normalizeImportHeader(student.fullName);
+  const phoneKey = String(student.phone || "").replace(/\D/g, "");
+  if (phoneKey && keys.byNamePhone.has(`${nameKey}|${phoneKey}`)) return true;
+  return keys.byName.has(nameKey);
+}
+
+async function previewImportedStudents(client, clubId, rawRows) {
+  const keys = await existingStudentKeys(client, clubId);
+  const seen = new Set();
+  const rows = rawRows.map((row, index) => {
+    const student = normalizeImportedStudent(row, index + 2);
+    const nameKey = normalizeImportHeader(student.fullName);
+    const phoneKey = String(student.phone || "").replace(/\D/g, "");
+    const localKey = `${nameKey}|${phoneKey}`;
+    const duplicate = !student.errors.length && (isDuplicateImport(student, keys) || seen.has(localKey));
+    if (!student.errors.length) seen.add(localKey);
+    return {
+      ...student,
+      duplicate,
+      ready: !student.errors.length && !duplicate
+    };
+  });
+  return {
+    rows,
+    summary: {
+      readRows: rawRows.length,
+      readyRows: rows.filter((row) => row.ready).length,
+      duplicateRows: rows.filter((row) => row.duplicate).length,
+      errorRows: rows.filter((row) => row.errors.length).length
+    }
+  };
+}
+
 async function audit(client, request, action, entityType, entityId, beforeData, afterData) {
   const clubId = beforeData?.club_id || beforeData?.clubId || afterData?.club_id || afterData?.clubId || getUserClubId(request.user);
   await client.query(
@@ -339,9 +632,7 @@ async function fetchStudent(client, id, user) {
   const params = [id];
   const filters = ["s.id = $1"];
   addStudentAccessFilter(filters, params, user, "s");
-  const lessonJoin = isCoach(user)
-    ? `LEFT JOIN student_lessons l ON l.student_id = s.id AND l.trainer_user_id = $${params.push(user.id)}`
-    : "LEFT JOIN student_lessons l ON l.student_id = s.id";
+  const lessonJoin = "LEFT JOIN student_lessons l ON l.student_id = s.id";
   const { rows } = await client.query(
     `SELECT
        s.*,
@@ -358,10 +649,10 @@ async function fetchStudent(client, id, user) {
      GROUP BY s.id`,
     params
   );
-  return rows[0] ? mapStudent(rows[0]) : null;
+  return rows[0] ? mapStudent(rows[0], user) : null;
 }
 
-async function replaceLessons(client, studentId, lessons, studentContext) {
+async function replaceLessons(client, studentId, lessons, studentContext, trainerUserId = null) {
   const clubId = studentContext?.club_id || null;
   const branchId = studentContext?.branch_id || null;
   if (!clubId) return;
@@ -371,9 +662,9 @@ async function replaceLessons(client, studentId, lessons, studentContext) {
     const time = nullableText(lesson.time);
     if (!day || !time) continue;
     await client.query(
-      `INSERT INTO student_lessons (student_id, club_id, branch_id, day_of_week, start_time)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [studentId, clubId, branchId, day, time]
+      `INSERT INTO student_lessons (student_id, club_id, branch_id, day_of_week, start_time, trainer_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [studentId, clubId, branchId, day, time, trainerUserId]
     );
   }
 }
@@ -399,7 +690,7 @@ async function bootstrapAdmin() {
 }
 
 app.get("/healthz", (_request, response) => {
-  response.json({ ok: true, app: "emba-professional-web" });
+  response.json({ ok: true, app: "kulupasist" });
 });
 
 app.post(
@@ -445,10 +736,438 @@ app.get(
 );
 
 app.get(
+  "/api/clubs",
+  requireAuth,
+  asyncHandler(async (request, response) => {
+    if (!isSuperAdmin(request.user)) {
+      response.status(403).json({ error: "Kulup listesi yalnizca ust yonetim icin aciktir." });
+      return;
+    }
+    const { rows } = await query(
+      `SELECT
+         c.*,
+         COALESCE(s.student_count, 0)::int AS student_count,
+         COALESCE(s.active_student_count, 0)::int AS active_student_count,
+         COALESCE(u.user_count, 0)::int AS user_count
+       FROM clubs c
+       LEFT JOIN LATERAL (
+         SELECT
+           COUNT(*)::int AS student_count,
+           COUNT(*) FILTER (WHERE status = 'Aktif')::int AS active_student_count
+         FROM students
+         WHERE club_id = c.id
+       ) s ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS user_count
+         FROM users
+         WHERE club_id = c.id
+       ) u ON TRUE
+       ORDER BY CASE WHEN c.slug = 'emba' THEN 0 ELSE 1 END, lower(c.name) ASC`
+    );
+    const clubs = rows.map(mapClub);
+    response.json({
+      clubs,
+      totals: {
+        clubCount: clubs.length,
+        activeClubCount: clubs.filter((club) => club.status === "active").length,
+        passiveClubCount: clubs.filter((club) => club.status !== "active").length,
+        studentCount: clubs.reduce((sum, club) => sum + club.studentCount, 0),
+        activeStudentCount: clubs.reduce((sum, club) => sum + club.activeStudentCount, 0),
+        userCount: clubs.reduce((sum, club) => sum + club.userCount, 0)
+      }
+    });
+  })
+);
+
+app.get(
+  "/api/clubs/:id/summary",
+  requireAuth,
+  asyncHandler(async (request, response) => {
+    const clubId = Number(request.params.id);
+    if (!Number.isInteger(clubId) || clubId < 1) {
+      response.status(400).json({ error: "Gecerli kulup secilmelidir." });
+      return;
+    }
+    if (!isSuperAdmin(request.user) && Number(getUserClubId(request.user)) !== clubId) {
+      response.status(403).json({ error: "Bu kulup icin yetkiniz yok." });
+      return;
+    }
+    const { rows } = await query(
+      `SELECT
+         c.*,
+         COALESCE(s.student_count, 0)::int AS student_count,
+         COALESCE(s.active_student_count, 0)::int AS active_student_count,
+         COALESCE(u.user_count, 0)::int AS user_count,
+         COALESCE(p.current_month_paid, 0)::numeric AS current_month_paid,
+         COALESCE(d.current_month_debt, 0)::numeric AS current_month_debt
+       FROM clubs c
+       LEFT JOIN LATERAL (
+         SELECT
+           COUNT(*)::int AS student_count,
+           COUNT(*) FILTER (WHERE status = 'Aktif')::int AS active_student_count
+         FROM students
+         WHERE club_id = c.id
+       ) s ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS user_count
+         FROM users
+         WHERE club_id = c.id
+       ) u ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(paid_amount), 0)::numeric AS current_month_paid
+         FROM payments
+         WHERE club_id = c.id
+           AND period_month = date_trunc('month', CURRENT_DATE)::date
+       ) p ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(GREATEST(students.monthly_fee - COALESCE(paid.paid_amount, 0), 0)), 0)::numeric AS current_month_debt
+         FROM students
+         LEFT JOIN (
+           SELECT student_id, SUM(paid_amount) AS paid_amount
+           FROM payments
+           WHERE club_id = c.id
+             AND period_month = date_trunc('month', CURRENT_DATE)::date
+           GROUP BY student_id
+         ) paid ON paid.student_id = students.id
+         WHERE students.club_id = c.id
+           AND students.status = 'Aktif'
+       ) d ON TRUE
+       WHERE c.id = $1`,
+      [clubId]
+    );
+    if (!rows[0]) {
+      response.status(404).json({ error: "Kulup bulunamadi." });
+      return;
+    }
+    response.json({ club: mapClub(rows[0]) });
+  })
+);
+
+app.post(
+  "/api/clubs",
+  requireAuth,
+  asyncHandler(async (request, response) => {
+    if (!isSuperAdmin(request.user)) {
+      response.status(403).json({ error: "Kulup ekleme yalnizca ust yonetim icin aciktir." });
+      return;
+    }
+    const payload = clubPayload(request.body || {});
+    if (!payload.name || !payload.slug) {
+      response.status(400).json({ error: "Kulup adi ve slug zorunludur." });
+      return;
+    }
+    const userPayload = optionalClubUserPayload(request.body || {});
+    if (userPayload) {
+      if (!userPayload.role) {
+        response.status(400).json({ error: "Gecerli bir kullanici rolu secilmelidir." });
+        return;
+      }
+      if (!userPayload.username || !userPayload.fullName || userPayload.password.length < 8) {
+        response.status(400).json({ error: "Yonetici kullanici adi, ad soyad ve en az 8 karakter gecici sifre gerekir." });
+        return;
+      }
+    }
+
+    const result = await transaction(async (client) => {
+      const usernameExists = userPayload
+        ? await client.query("SELECT id FROM users WHERE username = $1", [userPayload.username])
+        : { rows: [] };
+      if (usernameExists.rows[0]) {
+        const error = new Error("Bu kullanici adi zaten kullaniliyor.");
+        error.status = 409;
+        throw error;
+      }
+
+      const createdClub = await client.query(
+        `INSERT INTO clubs (name, slug, logo_url, phone, email, city, district, address, status, plan)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING *`,
+        [
+          payload.name,
+          payload.slug,
+          payload.logoUrl,
+          payload.phone,
+          payload.email,
+          payload.city,
+          payload.district,
+          payload.address,
+          payload.status,
+          payload.plan
+        ]
+      );
+      const club = createdClub.rows[0];
+      await client.query(
+        `INSERT INTO branches (club_id, name, type, active)
+         VALUES ($1, $2, 'branch', TRUE)
+         ON CONFLICT (club_id, name) DO NOTHING`,
+        [club.id, "Ana Şube / Ana Salon"]
+      );
+
+      let createdUser = null;
+      if (userPayload) {
+        const userResult = await client.query(
+          `INSERT INTO users (username, full_name, role, password_hash, club_id)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, username, full_name, role, club_id, active, created_at, updated_at`,
+          [
+            userPayload.username,
+            userPayload.fullName,
+            userPayload.role,
+            await hashPassword(userPayload.password),
+            club.id
+          ]
+        );
+        createdUser = publicUser(userResult.rows[0]);
+      }
+
+      return { club: mapClub(club), user: createdUser };
+    });
+
+    response.status(201).json(result);
+  })
+);
+
+app.put(
+  "/api/clubs/:id",
+  requireAuth,
+  asyncHandler(async (request, response) => {
+    if (!isSuperAdmin(request.user)) {
+      response.status(403).json({ error: "Kulup duzenleme yalnizca ust yonetim icin aciktir." });
+      return;
+    }
+    const payload = clubPayload(request.body || {});
+    if (!payload.name || !payload.slug) {
+      response.status(400).json({ error: "Kulup adi ve slug zorunludur." });
+      return;
+    }
+    const { rows } = await query(
+      `UPDATE clubs SET
+         name = $1,
+         slug = $2,
+         logo_url = $3,
+         phone = $4,
+         email = $5,
+         city = $6,
+         district = $7,
+         address = $8,
+         status = $9,
+         plan = $10
+       WHERE id = $11
+       RETURNING *`,
+      [
+        payload.name,
+        payload.slug,
+        payload.logoUrl,
+        payload.phone,
+        payload.email,
+        payload.city,
+        payload.district,
+        payload.address,
+        payload.status,
+        payload.plan,
+        request.params.id
+      ]
+    );
+    if (!rows[0]) {
+      response.status(404).json({ error: "Kulup bulunamadi." });
+      return;
+    }
+    response.json({ club: mapClub(rows[0]) });
+  })
+);
+
+app.post(
+  "/api/clubs/:id/users",
+  requireAuth,
+  requirePermission("users:write"),
+  asyncHandler(async (request, response) => {
+    if (!isSuperAdmin(request.user)) {
+      response.status(403).json({ error: "Kulup kullanicisi ekleme yalnizca ust yonetim icin aciktir." });
+      return;
+    }
+    const username = nullableText(request.body.username);
+    const fullName = nullableText(request.body.fullName);
+    const role = normalizeCreatableRole(request.body.role, request.user);
+    const password = String(request.body.password || "");
+    if (!role) {
+      response.status(403).json({ error: "Bu rol icin yetkiniz yok." });
+      return;
+    }
+    if (!username || !fullName || password.length < 8) {
+      response.status(400).json({ error: "Kullanici adi, ad soyad ve en az 8 karakter sifre gerekir." });
+      return;
+    }
+    const clubId = Number(request.params.id);
+    const club = await query("SELECT id FROM clubs WHERE id = $1", [clubId]);
+    if (!club.rows[0]) {
+      response.status(404).json({ error: "Kulup bulunamadi." });
+      return;
+    }
+    const passwordHash = await hashPassword(password);
+    const { rows } = await query(
+      `INSERT INTO users (username, full_name, role, password_hash, club_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, username, full_name, role, club_id, active, created_at, updated_at`,
+      [username, fullName, role, passwordHash, clubId]
+    );
+    response.status(201).json({ user: publicUser(rows[0]) });
+  })
+);
+
+app.get(
+  "/api/import/students/template.csv",
+  requireAuth,
+  requirePermission("students:import"),
+  (_request, response) => {
+    const headers = [
+      "ad_soyad",
+      "veli_adı",
+      "telefon",
+      "program",
+      "seviye",
+      "gün",
+      "saat",
+      "aylık_ücret",
+      "durum",
+      "not"
+    ];
+    response.setHeader("Content-Type", "text/csv; charset=utf-8");
+    response.setHeader("Content-Disposition", "attachment; filename=\"kulupasist-ogrenci-import-sablonu.csv\"");
+    response.send(`${headers.join(";")}\n`);
+  }
+);
+
+app.post(
+  "/api/import/students/preview",
+  requireAuth,
+  requirePermission("students:import"),
+  requireSelectedClubForSuperAdmin,
+  upload.single("file"),
+  asyncHandler(async (request, response) => {
+    if (!request.file) {
+      response.status(400).json({ error: "Excel dosyasi yuklenmelidir." });
+      return;
+    }
+    const clubId = isSuperAdmin(request.user) ? request.user.selectedClubId : getUserClubId(request.user);
+    if (!clubId) {
+      response.status(400).json({ error: "Kulup baglantisi bulunamadi." });
+      return;
+    }
+    const rawRows = await rowsFromSpreadsheet(request.file);
+    const client = await pool.connect();
+    try {
+      const preview = await previewImportedStudents(client, clubId, rawRows);
+      response.json({
+        ...preview,
+        paymentImport: {
+          supported: false,
+          note: "Bu asamada odeme importu yazilmaz; ogrenci ve ders aktarimi onayla/commit ile yapilir."
+        }
+      });
+    } finally {
+      client.release();
+    }
+  })
+);
+
+app.post(
+  "/api/import/students/commit",
+  requireAuth,
+  requirePermission("students:import"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const clubId = isSuperAdmin(request.user) ? request.user.selectedClubId : getUserClubId(request.user);
+    if (!clubId) {
+      response.status(400).json({ error: "Kulup baglantisi bulunamadi." });
+      return;
+    }
+    const rows = Array.isArray(request.body.rows) ? request.body.rows.slice(0, 1000) : [];
+    if (!rows.length) {
+      response.status(400).json({ error: "Aktarilacak onayli satir bulunamadi." });
+      return;
+    }
+
+    const result = await transaction(async (client) => {
+      const branchId = await ensureDefaultBranchId(client, clubId);
+      const preview = await previewImportedStudents(client, clubId, rows);
+      const report = {
+        readRows: rows.length,
+        insertedStudents: 0,
+        insertedLessons: 0,
+        skippedDuplicates: 0,
+        skippedErrors: 0,
+        insertedPayments: 0,
+        errors: []
+      };
+
+      for (const row of preview.rows) {
+        if (row.errors.length) {
+          report.skippedErrors += 1;
+          report.errors.push({ rowNumber: row.rowNumber, fullName: row.fullName, errors: row.errors });
+          continue;
+        }
+        if (row.duplicate) {
+          report.skippedDuplicates += 1;
+          continue;
+        }
+
+        const inserted = await client.query(
+          `INSERT INTO students (
+             status, full_name, program, level, parent_name, phone,
+             monthly_fee, registration_date, note, created_by, updated_by, club_id, branch_id
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE, $8, $9, $9, $10, $11)
+           RETURNING id, club_id, branch_id, full_name`,
+          [
+            row.status,
+            row.fullName,
+            row.program,
+            row.level,
+            row.parentName || null,
+            row.phone || null,
+            row.monthlyFee,
+            row.note || null,
+            request.user.id,
+            clubId,
+            branchId
+          ]
+        );
+        report.insertedStudents += 1;
+
+        if (row.day && row.time) {
+          await client.query(
+            `INSERT INTO student_lessons (student_id, club_id, branch_id, day_of_week, start_time)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [inserted.rows[0].id, clubId, branchId, row.day, row.time]
+          );
+          report.insertedLessons += 1;
+        }
+      }
+
+      return report;
+    });
+
+    response.status(201).json({
+      report: result,
+      paymentImport: {
+        supported: false,
+        insertedPayments: 0,
+        note: "Odeme importu bu asamada yazilmadi; finans aktarimi ayri preview/onay asamasina birakildi."
+      }
+    });
+  })
+);
+
+app.get(
   "/api/settings",
   requireAuth,
   requirePermission("dashboard:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
+    if (isCoach(request.user)) {
+      response.status(403).json({ error: "Coach rolu kulup ayarlarina erisemez." });
+      return;
+    }
     const params = ["club"];
     const filters = ["key = $1"];
     addTenantFilter(filters, params, request.user, "app_settings");
@@ -468,6 +1187,7 @@ app.get(
   "/api/dashboard",
   requireAuth,
   requirePermission("dashboard:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const period = normalizePeriodMonth(new Date().toISOString().slice(0, 7));
     const studentParams = [];
@@ -486,13 +1206,13 @@ app.get(
     const debtParams = [period];
     let debtPaymentWhere = "WHERE period_month = $1";
     let debtStudentWhere = "WHERE s.status = 'Aktif'";
-    if (!isSuperAdmin(request.user)) {
-      const clubId = getUserClubId(request.user);
-      paymentPeriodParams.push(clubId);
+    const scopedClubId = isSuperAdmin(request.user) ? request.user.selectedClubId : getUserClubId(request.user);
+    if (scopedClubId) {
+      paymentPeriodParams.push(scopedClubId);
       paymentPeriodWhere += ` AND club_id = $${paymentPeriodParams.length}`;
-      paymentTenantParams.push(clubId);
+      paymentTenantParams.push(scopedClubId);
       paymentTenantWhere = `WHERE club_id = $${paymentTenantParams.length}`;
-      debtParams.push(clubId);
+      debtParams.push(scopedClubId);
       debtPaymentWhere += ` AND club_id = $${debtParams.length}`;
       debtStudentWhere += ` AND s.club_id = $${debtParams.length}`;
     }
@@ -560,6 +1280,7 @@ app.get(
   "/api/students",
   requireAuth,
   requirePermission("students:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const search = String(request.query.q || "").trim();
     const status = String(request.query.status || "").trim();
@@ -576,9 +1297,7 @@ app.get(
     }
 
     addStudentAccessFilter(filters, params, request.user, "s");
-    const lessonJoin = isCoach(request.user)
-      ? `LEFT JOIN student_lessons l ON l.student_id = s.id AND l.trainer_user_id = $${params.push(request.user.id)}`
-      : "LEFT JOIN student_lessons l ON l.student_id = s.id";
+    const lessonJoin = "LEFT JOIN student_lessons l ON l.student_id = s.id";
     const where = whereClause(filters);
     const { rows } = await query(
       `SELECT
@@ -598,7 +1317,7 @@ app.get(
        LIMIT 500`,
       params
     );
-    response.json({ students: rows.map(mapStudent) });
+    response.json({ students: rows.map((row) => mapStudent(row, request.user)) });
   })
 );
 
@@ -606,8 +1325,17 @@ app.post(
   "/api/students",
   requireAuth,
   requirePermission("students:write"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const payload = studentPayload(request.body);
+    if (isCoach(request.user)) {
+      payload.packageCode = null;
+      payload.packageName = null;
+      payload.monthlyTotalSessions = 0;
+      payload.monthlySwimmingSessions = 0;
+      payload.monthlySportSessions = 0;
+      payload.monthlyFee = 0;
+    }
     if (!payload.fullName) {
       response.status(400).json({ error: "Ogrenci adi zorunludur." });
       return;
@@ -651,7 +1379,7 @@ app.post(
           branchId
         ]
       );
-      await replaceLessons(client, rows[0].id, payload.lessons, rows[0]);
+      await replaceLessons(client, rows[0].id, payload.lessons, rows[0], isCoach(request.user) ? request.user.id : null);
       const created = await fetchStudent(client, rows[0].id, request.user);
       await audit(client, request, "create", "student", rows[0].id, null, created);
       return created;
@@ -665,7 +1393,12 @@ app.patch(
   "/api/students/:id",
   requireAuth,
   requirePermission("students:write"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
+    if (isCoach(request.user)) {
+      response.status(403).json({ error: "Coach yalnizca yeni ogrenci ekleyebilir; duzenleme yetkisi manager tarafindadir." });
+      return;
+    }
     const payload = studentPayload(request.body);
     if (!payload.fullName) {
       response.status(400).json({ error: "Ogrenci adi zorunludur." });
@@ -734,6 +1467,7 @@ app.delete(
   "/api/students/:id",
   requireAuth,
   requirePermission("students:delete"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     await transaction(async (client) => {
       const studentMeta = await fetchAccessibleStudentMeta(client, request.user, request.params.id);
@@ -750,6 +1484,7 @@ app.get(
   "/api/students/:id",
   requireAuth,
   requirePermission("students:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const client = await pool.connect();
     try {
@@ -785,10 +1520,22 @@ app.get(
           attendanceParams
         )
       ]);
+      const attendanceRows = attendance.rows.map(mapAttendance);
+      const presentCount = attendanceRows.filter((item) => item.status === "present").length;
+      const absentCount = attendanceRows.filter((item) => item.status === "absent").length;
+      const totalAttendance = presentCount + absentCount;
+      const lastAttendance = attendanceRows[0] || null;
       response.json({
         student,
         payments: payments.rows.map(mapPayment),
-        attendance: attendance.rows.map(mapAttendance)
+        attendance: attendanceRows,
+        attendanceSummary: {
+          present: presentCount,
+          absent: absentCount,
+          total: totalAttendance,
+          attendanceRate: totalAttendance ? Math.round((presentCount / totalAttendance) * 100) : 0,
+          lastDate: lastAttendance?.lessonDate || null
+        }
       });
     } finally {
       client.release();
@@ -800,6 +1547,7 @@ app.get(
   "/api/payments",
   requireAuth,
   requirePermission("payments:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const period = request.query.month ? normalizePeriodMonth(request.query.month) : null;
     const params = [];
@@ -827,6 +1575,7 @@ app.post(
   "/api/payments",
   requireAuth,
   requirePermission("payments:write"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const studentId = Number(request.body.studentId);
     const periodMonth = normalizePeriodMonth(request.body.periodMonth);
@@ -877,6 +1626,7 @@ app.delete(
   "/api/payments/:id",
   requireAuth,
   requirePermission("payments:delete"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     await transaction(async (client) => {
       const params = [request.params.id];
@@ -892,9 +1642,222 @@ app.delete(
 );
 
 app.get(
+  "/api/attendance/slots",
+  requireAuth,
+  requirePermission("attendance:read"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const lessonDate = request.query.date || today();
+    const dayOfWeek = dayNameForDate(lessonDate);
+    const params = [dayOfWeek];
+    const filters = ["l.day_of_week = $1", "s.status = 'Aktif'"];
+    addTenantFilter(filters, params, request.user, "s");
+    const { rows } = await query(
+      `SELECT l.start_time, COUNT(DISTINCT s.id)::int AS student_count
+       FROM student_lessons l
+       JOIN students s ON s.id = l.student_id
+       ${whereClause(filters)}
+       GROUP BY l.start_time
+       ORDER BY l.start_time ASC`,
+      params
+    );
+    response.json({
+      date: lessonDate,
+      dayOfWeek,
+      slots: rows.map((row) => ({
+        time: row.start_time,
+        studentCount: Number(row.student_count || 0)
+      }))
+    });
+  })
+);
+
+app.get(
+  "/api/attendance/lesson-students",
+  requireAuth,
+  requirePermission("attendance:read"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const lessonDate = request.query.date || today();
+    const startTime = nullableText(request.query.time);
+    if (!startTime) {
+      response.status(400).json({ error: "Ders saati secilmelidir." });
+      return;
+    }
+    const dayOfWeek = dayNameForDate(lessonDate);
+    const params = [dayOfWeek, startTime, lessonDate];
+    const filters = ["l.day_of_week = $1", "l.start_time = $2", "s.status = 'Aktif'"];
+    addTenantFilter(filters, params, request.user, "s");
+    const { rows } = await query(
+      `SELECT
+         s.*,
+         COALESCE(
+           json_agg(
+             json_build_object('id', all_lessons.id, 'day', all_lessons.day_of_week, 'time', all_lessons.start_time)
+             ORDER BY all_lessons.id
+           ) FILTER (WHERE all_lessons.id IS NOT NULL),
+           '[]'
+         ) AS lessons,
+         a.status AS attendance_status,
+         a.note AS attendance_note,
+         u.full_name AS recorded_by_name
+       FROM student_lessons l
+       JOIN students s ON s.id = l.student_id
+       LEFT JOIN student_lessons all_lessons ON all_lessons.student_id = s.id
+       LEFT JOIN attendance_records a
+         ON a.student_id = s.id
+        AND a.lesson_date = $3
+        AND a.start_time = l.start_time
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}
+       GROUP BY s.id, a.status, a.note, u.full_name
+       ORDER BY lower(s.full_name) ASC`,
+      params
+    );
+    response.json({
+      date: lessonDate,
+      dayOfWeek,
+      time: startTime,
+      students: rows.map((row) => ({
+        ...mapStudent(row, request.user),
+        attendanceStatus: row.attendance_status || null,
+        attendanceNote: row.attendance_note || null,
+        recordedByName: row.recorded_by_name || null
+      }))
+    });
+  })
+);
+
+app.post(
+  "/api/attendance/bulk",
+  requireAuth,
+  requirePermission("attendance:write"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const lessonDate = request.body.lessonDate || today();
+    const startTime = nullableText(request.body.startTime);
+    const records = Array.isArray(request.body.records) ? request.body.records : [];
+    if (!startTime || !records.length) {
+      response.status(400).json({ error: "Ders saati ve yoklama kayitlari zorunludur." });
+      return;
+    }
+    const dayOfWeek = dayNameForDate(lessonDate);
+    const result = await transaction(async (client) => {
+      const clubId = isSuperAdmin(request.user) ? request.user.selectedClubId : getUserClubId(request.user);
+      const ids = records.map((record) => Number(record.studentId)).filter((id) => Number.isInteger(id));
+      const eligible = await client.query(
+        `SELECT DISTINCT s.id, s.club_id, s.branch_id
+         FROM students s
+         JOIN student_lessons l ON l.student_id = s.id
+         WHERE s.club_id = $1
+           AND s.status = 'Aktif'
+           AND l.day_of_week = $2
+           AND l.start_time = $3
+           AND s.id = ANY($4::bigint[])`,
+        [clubId, dayOfWeek, startTime, ids]
+      );
+      const eligibleById = new Map(eligible.rows.map((row) => [String(row.id), row]));
+      const report = { saved: 0, skipped: 0 };
+      for (const record of records) {
+        const student = eligibleById.get(String(record.studentId));
+        if (!student) {
+          report.skipped += 1;
+          continue;
+        }
+        await client.query(
+          `INSERT INTO attendance_records
+            (student_id, club_id, branch_id, lesson_date, day_of_week, start_time, status, note, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (student_id, lesson_date, start_time)
+           DO UPDATE SET
+            day_of_week = EXCLUDED.day_of_week,
+            club_id = EXCLUDED.club_id,
+            branch_id = EXCLUDED.branch_id,
+            status = EXCLUDED.status,
+            note = EXCLUDED.note,
+            recorded_by = EXCLUDED.recorded_by
+           RETURNING id`,
+          [
+            student.id,
+            student.club_id,
+            student.branch_id,
+            lessonDate,
+            dayOfWeek,
+            startTime,
+            normalizeAttendanceStatus(record.status),
+            nullableText(record.note),
+            request.user.id
+          ]
+        );
+        report.saved += 1;
+      }
+      return report;
+    });
+    response.status(201).json({ ok: true, ...result });
+  })
+);
+
+app.get(
+  "/api/attendance/report",
+  requireAuth,
+  requirePermission("attendance:read"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const dateFrom = request.query.dateFrom || request.query.from || today();
+    const dateTo = request.query.dateTo || request.query.to || dateFrom;
+    const params = [dateFrom, dateTo];
+    const filters = ["a.lesson_date BETWEEN $1 AND $2"];
+    const startTime = nullableText(request.query.time);
+    const status = nullableText(request.query.status);
+    const coachId = Number(request.query.coachId || 0);
+    const studentId = Number(request.query.studentId || 0);
+    if (startTime) {
+      params.push(startTime);
+      filters.push(`a.start_time = $${params.length}`);
+    }
+    if (status && status !== "all") {
+      params.push(status);
+      filters.push(`a.status = $${params.length}`);
+    }
+    if (!isCoach(request.user) && Number.isInteger(coachId) && coachId > 0) {
+      params.push(coachId);
+      filters.push(`a.recorded_by = $${params.length}`);
+    }
+    if (Number.isInteger(studentId) && studentId > 0) {
+      params.push(studentId);
+      filters.push(`a.student_id = $${params.length}`);
+    }
+    addAttendanceAccessFilter(filters, params, request.user, "a");
+    const { rows } = await query(
+      `SELECT a.*, s.full_name AS student_name, u.full_name AS recorded_by_name
+       FROM attendance_records a
+       JOIN students s ON s.id = a.student_id
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}
+       ORDER BY a.lesson_date DESC, a.start_time ASC, lower(s.full_name) ASC
+       LIMIT 1000`,
+      params
+    );
+    const attendance = rows.map(mapAttendance);
+    const present = attendance.filter((item) => item.status === "present").length;
+    const absent = attendance.filter((item) => item.status === "absent").length;
+    response.json({
+      attendance,
+      summary: {
+        total: attendance.length,
+        present,
+        absent,
+        attendanceRate: present + absent ? Math.round((present / (present + absent)) * 100) : 0
+      }
+    });
+  })
+);
+
+app.get(
   "/api/attendance",
   requireAuth,
   requirePermission("attendance:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const lessonDate = request.query.date || today();
     const params = [lessonDate];
@@ -917,6 +1880,7 @@ app.post(
   "/api/attendance",
   requireAuth,
   requirePermission("attendance:write"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const studentId = Number(request.body.studentId);
     const lessonDate = request.body.lessonDate || today();
@@ -978,6 +1942,7 @@ app.get(
   "/api/users",
   requireAuth,
   requirePermission("users:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const params = [];
     const filters = [];
@@ -997,6 +1962,7 @@ app.post(
   "/api/users",
   requireAuth,
   requirePermission("users:write"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const username = nullableText(request.body.username);
     const fullName = nullableText(request.body.fullName);
@@ -1035,6 +2001,7 @@ app.patch(
   "/api/users/:id",
   requireAuth,
   requirePermission("users:write"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const fullName = nullableText(request.body.fullName);
     const role = normalizeCreatableRole(request.body.role, request.user);
@@ -1091,6 +2058,7 @@ app.get(
   "/api/audit-logs",
   requireAuth,
   requirePermission("audit:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const params = [];
     const filters = [];
@@ -1112,6 +2080,7 @@ app.get(
   "/api/backups",
   requireAuth,
   requirePermission("backup:read"),
+  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const params = [];
     const filters = [];
@@ -1167,7 +2136,7 @@ async function start() {
   await bootstrapAdmin();
   scheduleBackups(pool, process.env.AUTO_BACKUP_HOURS || 24);
   app.listen(PORT, () => {
-    console.log(`EMBA uygulamasi ${PORT} portunda calisiyor.`);
+    console.log(`KulupAsist uygulamasi ${PORT} portunda calisiyor.`);
   });
 }
 

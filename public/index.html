@@ -3,16 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>EMBA Spor Kulübü Yönetim Paneli</title>
+    <title>KulüpAsist Merkez</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <section id="loginView" class="login-view">
       <div class="login-shell">
         <div class="login-brand-panel">
-          <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
-          <h1>EMBA Spor Kulübü Yönetim Paneli</h1>
-          <p>Öğrenci, yoklama ve ödeme yönetimi</p>
+          <div class="app-logo login-logo">
+            <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+            <strong class="text-logo-fallback" hidden>KulüpAsist</strong>
+          </div>
+          <h1>KulüpAsist</h1>
+          <p>Spor kulüpleri için öğrenci, yoklama, ödeme ve yetki yönetimi.</p>
         </div>
         <form id="loginForm" class="login-panel">
           <div>
@@ -39,23 +42,31 @@
       <div id="sidebarOverlay" class="sidebar-overlay" hidden></div>
       <header class="mobile-header">
         <button id="mobileMenuButton" class="icon-button" type="button" aria-label="Menüyü aç">☰</button>
-        <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
-        <strong>EMBA Panel</strong>
+        <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+        <span class="fallback-logo small" hidden>KA</span>
+        <strong>KulüpAsist</strong>
       </header>
 
       <aside id="sidebar" class="sidebar">
         <div class="brand">
-          <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
+          <div class="app-logo">
+            <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+            <span class="fallback-logo" hidden>KA</span>
+          </div>
           <div>
-            <strong>EMBA</strong>
-            <span>Spor Kulübü</span>
+            <strong>KulüpAsist</strong>
+            <span>Üst yönetim ve kulüp paneli</span>
           </div>
         </div>
         <nav aria-label="Ana menü">
-          <button class="nav-button active" data-view="dashboardView" data-permission="dashboard:read"><span>Panel</span></button>
+          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Üst Yönetim</span></button>
+          <button class="nav-button" data-view="dashboardView" data-permission="dashboard:read"><span>Panel</span></button>
           <button class="nav-button" data-view="studentsView" data-permission="students:read"><span>Öğrenciler</span></button>
+          <button class="nav-button" data-view="studentCreateView" data-permission="students:write" data-coach-only="true"><span>Öğrenci Ekle</span></button>
           <button class="nav-button" data-view="attendanceView" data-permission="attendance:read"><span>Yoklama</span></button>
+          <button class="nav-button" data-view="attendanceReportView" data-permission="attendance:read"><span>Yoklama Raporu</span></button>
           <button class="nav-button" data-view="paymentsView" data-permission="payments:read"><span>Ödemeler</span></button>
+          <button class="nav-button" data-view="importView" data-permission="students:import"><span>Toplu İçe Aktar</span></button>
           <button class="nav-button" data-view="usersView" data-permission="users:read"><span>Kullanıcılar</span></button>
           <button class="nav-button" data-view="backupView" data-permission="backup:read"><span>Raporlar</span></button>
         </nav>
@@ -64,11 +75,19 @@
       <main class="content">
         <header class="topbar">
           <div class="page-title-block">
-            <p class="eyebrow">EMBA Spor Kulübü</p>
-            <h1 id="pageTitle">Yönetim Paneli</h1>
-            <p id="pageSubtitle">Kulüp operasyonlarını tek ekrandan takip edin.</p>
+            <div class="top-title-logo">
+              <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+              <span class="fallback-logo small" hidden>KA</span>
+              <div>
+                <p class="eyebrow">KulüpAsist</p>
+                <h1 id="pageTitle">KulüpAsist Merkez</h1>
+                <p id="pageSubtitle">Kulüp ve kullanıcı yönetim merkezi</p>
+              </div>
+            </div>
           </div>
           <div class="topbar-actions">
+            <button id="backToClubsButton" class="secondary hidden" type="button">KulüpAsist Merkez'e Dön</button>
+            <span id="clubContextLabel" class="user-badge hidden"></span>
             <input id="globalSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
             <span id="userBadge" class="user-badge"></span>
             <button id="logoutButton" class="secondary" type="button">Çıkış</button>
@@ -77,13 +96,91 @@
 
         <p id="notice" class="notice" aria-live="polite"></p>
 
-        <section id="dashboardView" class="view active">
-          <div class="dashboard-hero">
-            <img src="/assets/emba-logo.jpeg" alt="EMBA Spor Kulübü logosu">
+        <section id="superAdminView" class="view active">
+          <div class="section-head">
             <div>
-              <p class="eyebrow">Canlı operasyon özeti</p>
-              <h2>EMBA Spor Kulübü Yönetim Paneli</h2>
-              <p>Öğrenci, yoklama ve tahsilat durumunu kulüp ölçeğinde izleyin.</p>
+              <div class="section-logo-title">
+                <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+                <span class="fallback-logo" hidden>KA</span>
+                <div>
+                  <h2>KulüpAsist Merkez</h2>
+                  <p>Kulüp ve kullanıcı yönetim merkezi</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="superAdminCards" class="metric-grid compact-metrics"></div>
+
+          <div class="super-admin-layout">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Kulüpler</h3>
+                <span class="soft-pill">EMBA ilk kulüp</span>
+              </div>
+              <div id="clubGrid" class="club-grid"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Yeni Kulüp</h3>
+                <span class="soft-pill">SaaS hazır</span>
+              </div>
+              <form id="clubForm" class="stack-form">
+                <label>Kulüp adı<input id="clubName" required placeholder="Örn. Yeni Spor Kulübü"></label>
+                <label>Kısa ad / slug<input id="clubSlug" placeholder="yeni-spor"></label>
+                <label>Plan
+                  <select id="clubPlan">
+                    <option value="standard">Standard</option>
+                    <option value="free">Free</option>
+                    <option value="owner">Owner</option>
+                    <option value="pro">Pro</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                </label>
+                <label>Durum
+                  <select id="clubStatus">
+                    <option value="active">Aktif</option>
+                    <option value="inactive">Pasif</option>
+                    <option value="suspended">Askıda</option>
+                  </select>
+                </label>
+                <label>Telefon<input id="clubPhone" autocomplete="tel"></label>
+                <label>E-posta<input id="clubEmail" type="email" autocomplete="email"></label>
+                <label>Şehir<input id="clubCity"></label>
+                <label>Adres<input id="clubAddress"></label>
+                <label class="check-row inline-check">
+                  <input id="clubCreateUser" type="checkbox">
+                  <span>Kulüp yöneticisi/kullanıcısı oluştur</span>
+                </label>
+                <div id="clubUserFields" class="nested-fields hidden">
+                  <label>Yönetici kullanıcı adı<input id="clubAdminUsername" autocomplete="username"></label>
+                  <label>Yönetici ad soyad<input id="clubAdminFullName" autocomplete="name"></label>
+                  <label>Yönetici rolü
+                    <select id="clubAdminRole">
+                      <option value="manager">Manager</option>
+                      <option value="coordinator">Coordinator</option>
+                      <option value="coach">Coach</option>
+                      <option value="assistant">Assistant</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  </label>
+                  <label>Geçici şifre<input id="clubAdminPassword" type="password" autocomplete="new-password" minlength="8"></label>
+                </div>
+                <button type="submit" data-requires="users:write">Kulüp Ekle</button>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section id="dashboardView" class="view">
+          <div class="dashboard-hero">
+            <img id="dashboardClubLogo" src="/assets/emba-logo.jpeg" alt="Kulüp logosu">
+            <span id="dashboardClubFallback" class="fallback-logo hidden">KA</span>
+            <div>
+              <p class="eyebrow" id="dashboardEyebrow">Kulüp yönetimi</p>
+              <h2 id="dashboardClubName">Kulüp Yönetim Paneli</h2>
+              <p id="dashboardDescription">Öğrenci, yoklama ve tahsilat durumunu seçili kulüp ölçeğinde izleyin.</p>
             </div>
             <button id="refreshDashboardButton" class="secondary" type="button">Yenile</button>
           </div>
@@ -105,7 +202,7 @@
               </div>
               <div id="attendanceSummary" class="status-stack"></div>
             </section>
-            <section class="panel wide-panel">
+            <section class="panel wide-panel" data-finance-section>
               <div class="panel-head">
                 <h3>Aylık Tahsilat</h3>
                 <span class="soft-pill">Finans</span>
@@ -119,7 +216,7 @@
               </div>
               <div id="recentStudents" class="compact-list"></div>
             </section>
-            <section class="panel">
+            <section class="panel" data-finance-section>
               <div class="panel-head">
                 <h3>Ödeme Bekleyenler</h3>
                 <span class="soft-pill">Takip</span>
@@ -158,6 +255,7 @@
                   <label>Seviye<select id="studentLevel"><option>Başlangıç</option><option>Orta</option><option>İleri</option></select></label>
                   <label>Program<input id="studentProgram" value="Yüzme" required></label>
                   <label>Durum<select id="studentStatus"><option>Aktif</option><option>Bekleyen</option><option>Pasif</option></select></label>
+                  <label>Kayıt tarihi<input id="studentRegistrationDate" type="date"></label>
                 </div>
               </div>
 
@@ -186,7 +284,7 @@
                 </div>
               </div>
 
-              <div class="form-section">
+              <div class="form-section" data-finance-section>
                 <h3>D. Ödeme Bilgileri</h3>
                 <div class="form-grid">
                   <label>Paket kodu<input id="studentPackageCode" value="GRUP-YUZME"></label>
@@ -195,7 +293,6 @@
                   <label>Yüzme seansı<input id="studentSwimmingSessions" type="number" min="0" value="8"></label>
                   <label>Spor seansı<input id="studentSportSessions" type="number" min="0" value="0"></label>
                   <label>Aylık ücret<input id="studentMonthlyFee" type="number" min="0" value="6000"></label>
-                  <label>Kayıt tarihi<input id="studentRegistrationDate" type="date"></label>
                 </div>
               </div>
 
@@ -230,13 +327,24 @@
         <section id="attendanceView" class="view">
           <div class="section-head">
             <div>
-              <h2>Yoklama</h2>
-              <p>Mobilde hızlı, masaüstünde düzenli yoklama takibi.</p>
+              <h2>Yoklama Al</h2>
+              <p>Tarih ve saat seçin, o ders grubundaki öğrencileri kartlardan işaretleyin.</p>
             </div>
-            <input id="attendanceDate" type="date">
+            <div class="filter-row">
+              <input id="attendanceDate" type="date">
+              <select id="attendanceSlotTime"></select>
+            </div>
           </div>
           <section class="panel">
-            <form id="attendanceForm" class="inline-form">
+            <div class="attendance-toolbar">
+              <input id="attendanceCardSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
+              <span id="attendanceUnmarkedCount" class="soft-pill">0 işaretlenmedi</span>
+            </div>
+            <div id="lessonAttendanceCards" class="lesson-attendance-cards"></div>
+            <div class="sticky-save">
+              <button id="saveBulkAttendanceButton" type="button" data-requires="attendance:write">Yoklamayı Kaydet</button>
+            </div>
+            <form id="attendanceForm" class="inline-form hidden">
               <label>Öğrenci<select id="attendanceStudent" required></select></label>
               <label>Gün<input id="attendanceDay" placeholder="Salı"></label>
               <label>Saat<input id="attendanceTime" placeholder="17:30"></label>
@@ -250,6 +358,37 @@
             <table class="responsive-table">
               <thead><tr><th>Öğrenci</th><th>Tarih</th><th>Saat</th><th>Durum</th><th>Not</th><th>Kaydeden</th></tr></thead>
               <tbody id="attendanceTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="attendanceReportView" class="view">
+          <div class="section-head">
+            <div>
+              <h2>Yoklama Raporu</h2>
+              <p>Tarih, saat ve durum filtreleriyle devam/devamsızlık kayıtlarını inceleyin.</p>
+            </div>
+          </div>
+          <section class="panel">
+            <form id="attendanceReportForm" class="inline-form">
+              <label>Başlangıç<input id="reportDateFrom" type="date"></label>
+              <label>Bitiş<input id="reportDateTo" type="date"></label>
+              <label>Saat<input id="reportTime" placeholder="10:00"></label>
+              <label>Durum
+                <select id="reportStatus">
+                  <option value="all">Tümü</option>
+                  <option value="present">Geldi</option>
+                  <option value="absent">Gelmedi</option>
+                </select>
+              </label>
+              <button type="submit">Raporu Getir</button>
+            </form>
+          </section>
+          <div id="attendanceReportSummary" class="metric-grid compact-metrics"></div>
+          <div class="table-card">
+            <table class="responsive-table">
+              <thead><tr><th>Tarih</th><th>Saat</th><th>Öğrenci</th><th>Durum</th><th>Yoklamayı Alan</th></tr></thead>
+              <tbody id="attendanceReportTable"></tbody>
             </table>
           </div>
         </section>
@@ -287,6 +426,37 @@
             <table class="responsive-table">
               <thead><tr><th>Öğrenci</th><th>Veli</th><th>Telefon</th><th>Ay</th><th>Ücret</th><th>Ödenen</th><th>Kalan</th><th>Durum</th><th>İşlem</th></tr></thead>
               <tbody id="paymentTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="importView" class="view">
+          <div class="section-head">
+            <div>
+              <h2>Toplu İçe Aktar</h2>
+              <p>Excel listesini önce önizleyin, hataları kontrol edin, sonra onaylayarak aktarın.</p>
+            </div>
+            <a id="importTemplateLink" class="small-button secondary" href="/api/import/students/template.csv">Excel Şablonu İndir</a>
+          </div>
+          <section class="panel">
+            <form id="importForm" class="inline-form import-form">
+              <label>Excel dosyası<input id="importFile" type="file" accept=".xlsx,.xls,.csv" required></label>
+              <button type="submit" data-requires="students:import">Önizle</button>
+              <button id="importCommitButton" class="primary-action hidden" type="button" data-requires="students:import">Onayla ve İçe Aktar</button>
+            </form>
+          </section>
+          <div id="importSummary" class="metric-grid compact-metrics"></div>
+          <section id="importErrorsPanel" class="panel hidden">
+            <div class="panel-head">
+              <h3>Hatalı Satırlar</h3>
+              <span class="soft-pill">Validasyon</span>
+            </div>
+            <div id="importErrors" class="compact-list"></div>
+          </section>
+          <div class="table-card">
+            <table class="responsive-table">
+              <thead><tr><th>Satır</th><th>Öğrenci</th><th>Telefon</th><th>Program</th><th>Gün/Saat</th><th>Ücret</th><th>Durum</th></tr></thead>
+              <tbody id="importPreviewTable"></tbody>
             </table>
           </div>
         </section>

@@ -5,9 +5,16 @@
     students: [],
     payments: [],
     attendance: [],
+    lessonAttendance: [],
+    attendanceSlots: [],
+    attendanceReport: [],
+    clubs: [],
+    selectedClub: null,
+    importPreview: null,
     studentDetails: {},
     openStudentId: null,
-    activeView: "dashboardView",
+    activeView: "superAdminView",
+    pendingAttendanceTime: null,
     searchTimer: null
   };
 
@@ -19,10 +26,14 @@
   };
 
   const viewMeta = {
+    superAdminView: ["KulüpAsist Merkez", "Kulüp ve kullanıcı yönetim merkezi"],
     dashboardView: ["Yönetim Paneli", "Kulüp operasyonlarını tek ekrandan takip edin."],
     studentsView: ["Öğrenciler", "Kayıt, ders ve veli bilgilerini düzenleyin."],
     attendanceView: ["Yoklama", "Günlük ders katılımını hızlıca yönetin."],
+    studentCreateView: ["Öğrenci Ekle", "Hızlı öğrenci kaydı oluşturun."],
+    attendanceReportView: ["Yoklama Raporu", "Devam/devamsızlık kayıtlarını filtreleyin."],
     paymentsView: ["Ödemeler", "Tahsilat, kalan bakiye ve WhatsApp takibini yapın."],
+    importView: ["Toplu İçe Aktar", "Excel listesini önce önizleyin, sonra onaylayarak aktarın."],
     usersView: ["Kullanıcılar", "Rol ve durum bilgilerini kulüp bazında izleyin."],
     backupView: ["Raporlar", "Yedekler ve işlem kayıtlarını kontrol edin."]
   };
@@ -46,7 +57,19 @@
     notice: $("#notice"),
     userBadge: $("#userBadge"),
     logoutButton: $("#logoutButton"),
+    backToClubsButton: $("#backToClubsButton"),
+    clubContextLabel: $("#clubContextLabel"),
     globalSearch: $("#globalSearch"),
+    superAdminCards: $("#superAdminCards"),
+    clubGrid: $("#clubGrid"),
+    clubForm: $("#clubForm"),
+    clubCreateUser: $("#clubCreateUser"),
+    clubUserFields: $("#clubUserFields"),
+    dashboardClubLogo: $("#dashboardClubLogo"),
+    dashboardClubFallback: $("#dashboardClubFallback"),
+    dashboardClubName: $("#dashboardClubName"),
+    dashboardEyebrow: $("#dashboardEyebrow"),
+    dashboardDescription: $("#dashboardDescription"),
     dashboardCards: $("#dashboardCards"),
     revenueChart: $("#revenueChart"),
     attendanceSummary: $("#attendanceSummary"),
@@ -63,10 +86,22 @@
     studentDetail: $("#studentDetail"),
     cancelStudentButton: $("#cancelStudentButton"),
     attendanceDate: $("#attendanceDate"),
+    attendanceSlotTime: $("#attendanceSlotTime"),
+    attendanceCardSearch: $("#attendanceCardSearch"),
+    attendanceUnmarkedCount: $("#attendanceUnmarkedCount"),
+    lessonAttendanceCards: $("#lessonAttendanceCards"),
+    saveBulkAttendanceButton: $("#saveBulkAttendanceButton"),
     attendanceForm: $("#attendanceForm"),
     attendanceStudent: $("#attendanceStudent"),
     attendanceCards: $("#attendanceCards"),
     attendanceTable: $("#attendanceTable"),
+    attendanceReportForm: $("#attendanceReportForm"),
+    reportDateFrom: $("#reportDateFrom"),
+    reportDateTo: $("#reportDateTo"),
+    reportTime: $("#reportTime"),
+    reportStatus: $("#reportStatus"),
+    attendanceReportSummary: $("#attendanceReportSummary"),
+    attendanceReportTable: $("#attendanceReportTable"),
     paymentMonthFilter: $("#paymentMonthFilter"),
     paymentSearch: $("#paymentSearch"),
     paymentStatusFilter: $("#paymentStatusFilter"),
@@ -77,6 +112,13 @@
     paymentPaidAmount: $("#paymentPaidAmount"),
     paymentDate: $("#paymentDate"),
     paymentTable: $("#paymentTable"),
+    importForm: $("#importForm"),
+    importFile: $("#importFile"),
+    importCommitButton: $("#importCommitButton"),
+    importSummary: $("#importSummary"),
+    importErrorsPanel: $("#importErrorsPanel"),
+    importErrors: $("#importErrors"),
+    importPreviewTable: $("#importPreviewTable"),
     userForm: $("#userForm"),
     userTable: $("#userTable"),
     runBackupButton: $("#runBackupButton"),
@@ -123,15 +165,34 @@
   }
 
   function recordNo(student) {
-    return `EMB-${String(student.id || 0).padStart(4, "0")}`;
+    const fallbackSlug = String(state.settings?.name || "").toLocaleLowerCase("tr-TR").includes("emba") ? "emba" : "kulup";
+    const prefix = String(state.selectedClub?.slug || fallbackSlug).slice(0, 4).toUpperCase();
+    return `${prefix}-${String(student.id || 0).padStart(4, "0")}`;
   }
 
   function normalizedRole() {
     return state.user?.normalizedRole || state.user?.role || "";
   }
 
+  function isSuperAdmin() {
+    return normalizedRole() === "super_admin";
+  }
+
+  function isCoach() {
+    return normalizedRole() === "coach";
+  }
+
+  function hasSelectedClub() {
+    return !isSuperAdmin() || Boolean(state.selectedClub?.id);
+  }
+
   function can(permission) {
     return state.user?.permissions?.includes(permission);
+  }
+
+  function currentClubName() {
+    if (isSuperAdmin()) return state.selectedClub?.name || "";
+    return state.settings?.name || "EMBA Spor Kulübü";
   }
 
   function lessonText(student) {
@@ -175,14 +236,57 @@
     }
   }
 
+  function shouldScopeClub(url) {
+    if (!isSuperAdmin() || !state.selectedClub?.id) return false;
+    return [
+      "/api/settings",
+      "/api/dashboard",
+      "/api/students",
+      "/api/payments",
+      "/api/attendance",
+      "/api/import",
+      "/api/users",
+      "/api/audit-logs",
+      "/api/backups"
+    ].some((prefix) => url.startsWith(prefix));
+  }
+
+  function withClubQuery(url) {
+    if (!shouldScopeClub(url)) return url;
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}clubId=${encodeURIComponent(state.selectedClub.id)}`;
+  }
+
+  function withClubBody(options) {
+    if (!isSuperAdmin() || !state.selectedClub?.id || !options.body) return options;
+    if (options.body instanceof FormData) return options;
+    try {
+      const parsed = JSON.parse(options.body);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return {
+          ...options,
+          body: JSON.stringify({ ...parsed, clubId: state.selectedClub.id })
+        };
+      }
+    } catch (_error) {
+      return options;
+    }
+    return options;
+  }
+
   async function api(url, options = {}) {
-    const response = await fetch(url, {
+    const method = String(options.method || "GET").toUpperCase();
+    const scopedOptions = method === "GET" ? options : withClubBody(options);
+    const isFormData = scopedOptions.body instanceof FormData;
+    const response = await fetch(withClubQuery(url), {
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {})
-      },
-      ...options
+      headers: isFormData
+        ? { ...(scopedOptions.headers || {}) }
+        : {
+          "Content-Type": "application/json",
+          ...(scopedOptions.headers || {})
+        },
+      ...scopedOptions
     });
 
     const data = await response.json().catch(() => ({}));
@@ -208,6 +312,8 @@
 
   function showLogin() {
     state.user = null;
+    state.selectedClub = null;
+    state.clubs = [];
     closeMobileMenu();
     els.loginView.classList.remove("hidden");
     els.appShell.classList.add("hidden");
@@ -217,15 +323,48 @@
     const role = normalizedRole();
     const dashboardButton = $('[data-view="dashboardView"] span');
     const studentsButton = $('[data-view="studentsView"] span');
+    const attendanceButton = $('[data-view="attendanceView"] span');
+    const reportButton = $('[data-view="attendanceReportView"] span');
+    const superButton = $('[data-view="superAdminView"] span');
+    if (superButton) superButton.textContent = "KulüpAsist Merkez";
     if (role === "coach") {
-      if (dashboardButton) dashboardButton.textContent = "Bugünkü Derslerim";
-      if (studentsButton) studentsButton.textContent = "Öğrenci Listem";
+      if (dashboardButton) dashboardButton.textContent = "Coach Sayfam";
+      if (studentsButton) studentsButton.textContent = "Öğrenciler";
+      if (attendanceButton) attendanceButton.textContent = "Yoklama Al";
+      if (reportButton) reportButton.textContent = "Yoklama Raporu";
     } else if (role === "coordinator") {
       if (dashboardButton) dashboardButton.textContent = "Operasyon";
       if (studentsButton) studentsButton.textContent = "Yeni Kayıt";
     } else {
       if (dashboardButton) dashboardButton.textContent = "Panel";
       if (studentsButton) studentsButton.textContent = "Öğrenciler";
+      if (attendanceButton) attendanceButton.textContent = "Yoklama";
+      if (reportButton) reportButton.textContent = "Yoklama Raporu";
+    }
+  }
+
+  function updateClubContext() {
+    const selectedName = currentClubName();
+    const showClubContext = Boolean(selectedName);
+    els.clubContextLabel.classList.toggle("hidden", !showClubContext);
+    els.clubContextLabel.textContent = showClubContext ? `${selectedName} yönetiliyor` : "";
+    els.backToClubsButton.classList.toggle("hidden", !isSuperAdmin() || !state.selectedClub);
+    els.globalSearch.classList.toggle("hidden", isSuperAdmin() && !state.selectedClub);
+    if (els.dashboardClubName) els.dashboardClubName.textContent = selectedName || "Kulüp Yönetim Paneli";
+    if (els.dashboardEyebrow) {
+      els.dashboardEyebrow.textContent = isCoach() ? "Coach paneli" : (selectedName ? "Kulüp yönetimi" : "Kulüp seçilmedi");
+    }
+    if (els.dashboardDescription) {
+      els.dashboardDescription.textContent = isCoach()
+        ? "Bugünkü ders saatleri, öğrenci listesi ve yoklama durumunu takip edin."
+        : "Öğrenci, yoklama ve tahsilat durumunu seçili kulüp ölçeğinde izleyin.";
+    }
+    if (els.dashboardClubLogo) {
+      const isEmba = String(state.selectedClub?.slug || "").toLowerCase() === "emba" || (!isSuperAdmin() && currentClubName().toLocaleLowerCase("tr-TR").includes("emba"));
+      const logo = state.selectedClub?.logoUrl || (isEmba ? "/assets/emba-logo.jpeg" : "");
+      els.dashboardClubLogo.hidden = !logo;
+      if (logo) els.dashboardClubLogo.src = logo;
+      if (els.dashboardClubFallback) els.dashboardClubFallback.classList.toggle("hidden", Boolean(logo));
     }
   }
 
@@ -233,13 +372,27 @@
     els.loginView.classList.add("hidden");
     els.appShell.classList.remove("hidden");
     els.userBadge.textContent = `${state.user.fullName} · ${state.user.roleLabel}`;
+    state.activeView = isSuperAdmin() ? "superAdminView" : "dashboardView";
     updateRoleMenuLabels();
+    updateClubContext();
     applyPermissions();
   }
 
   function applyPermissions() {
+    const superAdminMode = isSuperAdmin();
+    const clubSelected = hasSelectedClub();
     $$("[data-permission]").forEach((element) => {
-      element.classList.toggle("hidden", !can(element.dataset.permission));
+      const operationalNav = element.classList.contains("nav-button") && superAdminMode && !clubSelected;
+      element.classList.toggle("hidden", !can(element.dataset.permission) || operationalNav);
+    });
+    $$("[data-super-admin-only]").forEach((element) => {
+      element.classList.toggle("hidden", !superAdminMode);
+    });
+    $$("[data-coach-only]").forEach((element) => {
+      element.classList.toggle("hidden", !isCoach());
+    });
+    $$("[data-finance-section]").forEach((element) => {
+      element.classList.toggle("hidden", isCoach());
     });
     $$("[data-requires]").forEach((element) => {
       element.classList.toggle("hidden", !can(element.dataset.requires));
@@ -252,24 +405,141 @@
   }
 
   function updatePageMeta(viewId) {
-    const [title, subtitle] = viewMeta[viewId] || viewMeta.dashboardView;
+    let [title, subtitle] = viewMeta[viewId] || viewMeta.dashboardView;
+    if (isCoach() && viewId === "dashboardView") {
+      title = "Coach Sayfam";
+      subtitle = "Bugünkü dersler, hızlı yoklama ve son yoklama kayıtları.";
+    }
     els.pageTitle.textContent = title;
     els.pageSubtitle.textContent = subtitle;
   }
 
   function switchView(viewId) {
+    if (isSuperAdmin() && !state.selectedClub && viewId !== "superAdminView") {
+      setNotice("Önce üst yönetim panelinden bir kulüp seçin.", true);
+      viewId = "superAdminView";
+    }
+    const openCreateStudent = viewId === "studentCreateView";
+    if (openCreateStudent) viewId = "studentsView";
     state.activeView = viewId;
     updatePageMeta(viewId);
+    updateClubContext();
     closeMobileMenu();
     $$(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
     $$(".nav-button").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
 
+    if (viewId === "superAdminView") loadClubs();
     if (viewId === "dashboardView") loadDashboard();
     if (viewId === "studentsView") loadStudents();
     if (viewId === "attendanceView") loadAttendance();
+    if (viewId === "attendanceReportView") loadAttendanceReport();
     if (viewId === "paymentsView") loadPayments();
+    if (viewId === "importView") renderImportPreview();
     if (viewId === "usersView") loadUsers();
     if (viewId === "backupView") loadBackups();
+    if (openCreateStudent) openStudentEditor();
+  }
+
+  async function loadClubs() {
+    if (!isSuperAdmin()) return;
+    els.superAdminCards.innerHTML = emptyState("Veriler yükleniyor...", "Kulüp özetleri hazırlanıyor.");
+    const data = await api("/api/clubs");
+    state.clubs = data.clubs || [];
+    renderSuperAdmin(data.totals || {});
+  }
+
+  function renderSuperAdmin(totals) {
+    els.superAdminCards.innerHTML = [
+      metricCard("Kulüp", totals.clubCount ?? state.clubs.length, "navy", "Sistemdeki kulüp"),
+      metricCard("Aktif Kulüp", totals.activeClubCount ?? state.clubs.filter((club) => club.status === "active").length, "green", "Kullanımda"),
+      metricCard("Pasif Kulüp", totals.passiveClubCount ?? state.clubs.filter((club) => club.status !== "active").length, "red", "Pasif/askıda"),
+      metricCard("Öğrenci", totals.studentCount ?? 0, "gold", "Tüm kulüpler"),
+      metricCard("Kullanıcı", totals.userCount ?? 0, "navy", "Tüm roller")
+    ].join("");
+
+    els.clubGrid.innerHTML = state.clubs.length
+      ? state.clubs.map((club) => {
+        const isEmba = String(club.slug || "").toLowerCase() === "emba";
+        const logo = club.logoUrl || (isEmba ? "/assets/emba-logo.jpeg" : "");
+        return `
+          <article class="club-card ${isEmba ? "primary-club" : ""}">
+            <div class="club-card-head">
+              ${logo ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(club.name)} logosu">` : `<span class="fallback-logo small">KA</span>`}
+              <div>
+                <strong>${escapeHtml(club.name)}</strong>
+                <span>${escapeHtml(club.slug)} · ${escapeHtml(club.plan)}</span>
+              </div>
+            </div>
+            <div class="club-card-stats">
+              <div><span>Öğrenci</span><strong>${club.studentCount}</strong></div>
+              <div><span>Aktif</span><strong>${club.activeStudentCount}</strong></div>
+              <div><span>Kullanıcı</span><strong>${club.userCount}</strong></div>
+            </div>
+            <div class="form-actions">
+              <button type="button" data-action="manage-club" data-id="${club.id}">Kulübü Yönet</button>
+              <span class="badge ${club.status === "active" ? "good" : "warn"}">${escapeHtml(club.status)}</span>
+            </div>
+          </article>
+        `;
+      }).join("")
+      : emptyState("Henüz kulüp bulunamadı.", "İlk kulüp olarak EMBA görünmelidir.");
+  }
+
+  async function selectClub(id) {
+    const club = state.clubs.find((item) => String(item.id) === String(id));
+    if (!club) {
+      setNotice("Kulüp bulunamadı.", true);
+      return;
+    }
+    state.selectedClub = club;
+    state.students = [];
+    state.payments = [];
+    state.attendance = [];
+    state.studentDetails = {};
+    state.importPreview = null;
+    state.openStudentId = null;
+    updateClubContext();
+    applyPermissions();
+    await loadSettings();
+    await loadStudents();
+    switchView("dashboardView");
+    setNotice(`${club.name} yönetiliyor.`);
+  }
+
+  function clearSelectedClub() {
+    state.selectedClub = null;
+    state.students = [];
+    state.payments = [];
+    state.attendance = [];
+    state.studentDetails = {};
+    state.importPreview = null;
+    state.openStudentId = null;
+    updateClubContext();
+    applyPermissions();
+    switchView("superAdminView");
+  }
+
+  function readClubForm() {
+    const createUser = els.clubCreateUser.checked;
+    return {
+      name: $("#clubName").value.trim(),
+      slug: $("#clubSlug").value.trim(),
+      plan: $("#clubPlan").value,
+      status: $("#clubStatus").value,
+      phone: $("#clubPhone").value.trim(),
+      email: $("#clubEmail").value.trim(),
+      city: $("#clubCity").value.trim(),
+      address: $("#clubAddress").value.trim(),
+      createUser,
+      user: createUser
+        ? {
+          username: $("#clubAdminUsername").value.trim(),
+          fullName: $("#clubAdminFullName").value.trim(),
+          role: $("#clubAdminRole").value,
+          password: $("#clubAdminPassword").value
+        }
+        : null
+    };
   }
 
   async function loadSettings() {
@@ -284,6 +554,14 @@
         <em>${escapeHtml(text || "")}</em>
       </article>
     `;
+  }
+
+  function setPanelTitle(container, title, pill) {
+    const panel = container?.closest(".panel");
+    const heading = panel?.querySelector(".panel-head h3");
+    const badge = panel?.querySelector(".panel-head .soft-pill");
+    if (heading) heading.textContent = title;
+    if (badge) badge.textContent = pill || "";
   }
 
   function renderTodayLessons() {
@@ -385,6 +663,16 @@
 
   async function loadDashboard() {
     if (!can("dashboard:read")) return;
+    if (isSuperAdmin() && !state.selectedClub) {
+      switchView("superAdminView");
+      return;
+    }
+    if (isCoach()) {
+      await loadCoachDashboard();
+      return;
+    }
+    setPanelTitle(els.recentStudents, "Son Eklenen Öğrenciler", "Kayıt");
+    setPanelTitle(els.todayLessons, "Bugünkü Ders Saatleri", "Program");
     els.dashboardCards.innerHTML = emptyState("Veriler yükleniyor...", "Panel özeti hazırlanıyor.");
     const [dashboard, paymentData] = await Promise.all([
       api("/api/dashboard"),
@@ -393,7 +681,7 @@
     if (paymentData.payments) state.payments = paymentData.payments;
     const totalAttendance = (dashboard.attendance || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
     els.dashboardCards.innerHTML = [
-      metricCard("Toplam Öğrenci", dashboard.students?.total ?? 0, "navy", "Kulüp kayıtları"),
+      metricCard("Toplam Öğrenci", dashboard.students?.total ?? 0, "navy", `${currentClubName()} kayıtları`),
       metricCard("Aktif Öğrenci", dashboard.students?.active ?? 0, "green", "Devam eden kayıt"),
       metricCard("Bu Ay Tahsilat", money(dashboard.currentMonthPaid), "gold", "Toplam ödeme"),
       metricCard("Bekleyen Ödeme", money(dashboard.currentMonthDebt), "red", "Kalan bakiye"),
@@ -407,6 +695,56 @@
     renderPaymentWaiting();
   }
 
+  async function loadCoachDashboard() {
+    setPanelTitle(els.todayLessons, "Bugünkü Ders Saatleri", "Program");
+    setPanelTitle(els.recentStudents, "Son Alınan Yoklamalar", "Yoklama");
+    const date = new Date().toISOString().slice(0, 10);
+    const [slotsData, reportData] = await Promise.all([
+      api(`/api/attendance/slots?date=${encodeURIComponent(date)}`),
+      api(`/api/attendance/report?dateFrom=${encodeURIComponent(date)}&dateTo=${encodeURIComponent(date)}`)
+    ]);
+    state.attendanceSlots = slotsData.slots || [];
+    state.attendanceReport = reportData.attendance || [];
+    const present = reportData.summary?.present || 0;
+    const absent = reportData.summary?.absent || 0;
+    const unmarkedSlots = state.attendanceSlots.reduce((sum, slot) => sum + Number(slot.studentCount || 0), 0);
+    els.dashboardCards.innerHTML = [
+      metricCard("Bugünkü Saat", state.attendanceSlots.length, "navy", slotsData.dayOfWeek || todayName()),
+      metricCard("Geldi", present, "green", "Bugünkü yoklama"),
+      metricCard("Gelmedi", absent, "red", "Bugünkü yoklama"),
+      metricCard("Planlı Öğrenci", unmarkedSlots, "gold", "Saat grupları")
+    ].join("");
+    const quickActions = `
+      <div class="coach-actions">
+        <button type="button" data-action="go-student-create">Öğrenci Ekle</button>
+        <button type="button" data-action="go-attendance">Yoklama Al</button>
+      </div>
+    `;
+    els.todayLessons.innerHTML = state.attendanceSlots.length
+      ? quickActions + state.attendanceSlots.map((slot) => `
+          <div class="compact-item">
+            <div><strong>${escapeHtml(slot.time || "-")}</strong><span>${slot.studentCount} öğrenci</span></div>
+            <button class="small-button" data-action="open-attendance-slot" data-time="${escapeHtml(slot.time || "")}" type="button">Yoklama Al</button>
+          </div>
+        `).join("")
+      : quickActions + emptyState("Bugün ders saati görünmüyor.", "Seçili tarihte aktif ders grubu bulunamadı.");
+    els.attendanceSummary.innerHTML = [
+      `<div class="status-row"><strong>Geldi</strong><span class="badge good">${present}</span></div>`,
+      `<div class="status-row"><strong>Gelmedi</strong><span class="badge bad">${absent}</span></div>`
+    ].join("");
+    els.revenueChart.innerHTML = "";
+    els.recentStudents.innerHTML = state.attendanceReport.length
+      ? state.attendanceReport.slice(0, 6).map((item) => `
+          <div class="compact-item">
+            <div><strong>${escapeHtml(item.studentName)}</strong><span>${dateLabel(item.lessonDate)} · ${escapeHtml(item.startTime || "-")}</span></div>
+            ${statusBadge(item.status)}
+          </div>
+        `).join("")
+      : emptyState("Bugün henüz yoklama kaydı yok.", "Yoklama aldıkça son kayıtlar burada görünür.");
+    els.paymentWaiting.innerHTML = "";
+    applyPermissions();
+  }
+
   function getTodayLessonCount() {
     const day = todayName().toLocaleLowerCase("tr-TR");
     return state.students.reduce((total, student) => (
@@ -416,6 +754,10 @@
 
   async function loadStudents() {
     if (!can("students:read")) return;
+    if (isSuperAdmin() && !state.selectedClub) {
+      switchView("superAdminView");
+      return;
+    }
     const q = els.globalSearch.value.trim();
     const status = els.studentStatusFilter.value;
     const params = new URLSearchParams();
@@ -456,7 +798,7 @@
               <summary>İşlemler</summary>
               <div>
                 <button class="small-button secondary" data-action="detail-student" data-id="${student.id}" type="button">Detay</button>
-                ${can("students:write") ? `<button class="small-button" data-action="edit-student" data-id="${student.id}" type="button">Düzenle</button>` : ""}
+                ${can("students:write") && !isCoach() ? `<button class="small-button" data-action="edit-student" data-id="${student.id}" type="button">Düzenle</button>` : ""}
                 ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${student.id}" type="button">Sil</button>` : ""}
               </div>
             </details>
@@ -470,6 +812,30 @@
   function renderStudentDetailRow(data) {
     const student = data.student;
     const paymentTotal = (data.payments || []).reduce((sum, item) => sum + Number(item.paidAmount || 0), 0);
+    const summary = data.attendanceSummary || {};
+    const financeDetail = can("payments:read")
+      ? `
+        <div><span>Aylık Ücret</span><strong>${money(student.monthlyFee)}</strong></div>
+        <div><span>Toplam Tahsilat</span><strong>${money(paymentTotal)}</strong></div>
+      `
+      : "";
+    const financeStack = can("payments:read")
+      ? ((data.payments || []).slice(0, 4).map((payment) => `
+          <div class="status-row"><strong>${monthLabel(payment.periodMonth)}</strong><span>${money(payment.paidAmount)}</span></div>
+        `).join("") || emptyState("Ödeme kaydı yok.", "Bu öğrenci için ödeme görünmüyor."))
+      : "";
+    const attendanceStack = `
+      <div class="status-row"><strong>Toplam</strong><span class="badge">${summary.total || 0}</span></div>
+      <div class="status-row"><strong>Geldi</strong><span class="badge good">${summary.present || 0}</span></div>
+      <div class="status-row"><strong>Gelmedi</strong><span class="badge bad">${summary.absent || 0}</span></div>
+      <div class="status-row"><strong>Devam</strong><span class="badge">${summary.attendanceRate || 0}%</span></div>
+      ${(data.attendance || []).slice(0, 6).map((item) => `
+        <div class="status-row">
+          <strong>${dateLabel(item.lessonDate)} · ${escapeHtml(item.startTime || "-")}</strong>
+          <span>${statusBadge(item.status)} ${escapeHtml(item.recordedByName || "")}</span>
+        </div>
+      `).join("") || emptyState("Yoklama kaydı yok.", "Yoklama alındıkça burada görünür.")}
+    `;
     return `
       <tr class="student-detail-row">
         <td colspan="8">
@@ -481,14 +847,11 @@
             <div class="detail-list">
               <div><span>Veli</span><strong>${escapeHtml(student.parentName || "-")}</strong></div>
               <div><span>Telefon</span><strong>${escapeHtml(student.phone || "-")}</strong></div>
-              <div><span>Aylık Ücret</span><strong>${money(student.monthlyFee)}</strong></div>
-              <div><span>Toplam Tahsilat</span><strong>${money(paymentTotal)}</strong></div>
+              ${financeDetail}
               <div><span>Dersler</span><strong>${escapeHtml(lessonText(student) || "-")}</strong></div>
             </div>
             <div class="status-stack">
-              ${(data.payments || []).slice(0, 4).map((payment) => `
-                <div class="status-row"><strong>${monthLabel(payment.periodMonth)}</strong><span>${money(payment.paidAmount)}</span></div>
-              `).join("") || emptyState("Ödeme kaydı yok.", "Bu öğrenci için ödeme görünmüyor.")}
+              ${financeStack || attendanceStack}
             </div>
           </div>
         </td>
@@ -557,7 +920,7 @@
   }
 
   function readStudentForm() {
-    return {
+    const payload = {
       status: $("#studentStatus").value,
       fullName: $("#studentFullName").value.trim(),
       birthYear: Number($("#studentBirthYear").value || 0) || null,
@@ -578,6 +941,15 @@
       note: $("#studentNote").value.trim(),
       lessons: readLessons()
     };
+    if (isCoach()) {
+      payload.packageCode = "";
+      payload.packageName = "";
+      payload.monthlyTotalSessions = 0;
+      payload.monthlySwimmingSessions = 0;
+      payload.monthlySportSessions = 0;
+      payload.monthlyFee = 0;
+    }
+    return payload;
   }
 
   async function showStudentDetail(id) {
@@ -594,10 +966,23 @@
 
   async function loadAttendance() {
     if (!can("attendance:read")) return;
+    if (isSuperAdmin() && !state.selectedClub) {
+      switchView("superAdminView");
+      return;
+    }
     const date = els.attendanceDate.value || new Date().toISOString().slice(0, 10);
     els.attendanceDate.value = date;
-    if (!state.students.length) await loadStudents();
-    renderAttendanceCards();
+    const slotsData = await api(`/api/attendance/slots?date=${encodeURIComponent(date)}`);
+    state.attendanceSlots = slotsData.slots || [];
+    const currentTime = state.pendingAttendanceTime || els.attendanceSlotTime.value;
+    state.pendingAttendanceTime = null;
+    els.attendanceSlotTime.innerHTML = state.attendanceSlots.length
+      ? state.attendanceSlots.map((slot) => `<option value="${escapeHtml(slot.time)}">${escapeHtml(slot.time)} · ${slot.studentCount} öğrenci</option>`).join("")
+      : `<option value="">Ders saati yok</option>`;
+    if (currentTime && state.attendanceSlots.some((slot) => slot.time === currentTime)) {
+      els.attendanceSlotTime.value = currentTime;
+    }
+    await loadLessonAttendance();
     els.attendanceTable.innerHTML = emptyRow(6, "Veriler yükleniyor...", "Yoklama kayıtları hazırlanıyor.");
     const data = await api(`/api/attendance?date=${encodeURIComponent(date)}`);
     state.attendance = data.attendance || [];
@@ -615,41 +1000,115 @@
       : emptyRow(6, "Bu tarih için yoklama listesi boş.", "Ders seçip kayıt oluşturabilirsiniz.");
   }
 
+  async function loadLessonAttendance() {
+    const date = els.attendanceDate.value || new Date().toISOString().slice(0, 10);
+    const time = els.attendanceSlotTime.value;
+    if (!time) {
+      state.lessonAttendance = [];
+      renderAttendanceCards();
+      return;
+    }
+    const data = await api(`/api/attendance/lesson-students?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`);
+    state.lessonAttendance = (data.students || []).map((student) => ({
+      ...student,
+      selectedStatus: student.attendanceStatus || null
+    }));
+    renderAttendanceCards();
+  }
+
   function renderAttendanceCards() {
-    els.attendanceCards.innerHTML = state.students.length
-      ? state.students.slice(0, 36).map((student) => {
-        const firstLesson = (student.lessons || [])[0] || {};
+    const search = (els.attendanceCardSearch?.value || "").trim().toLocaleLowerCase("tr-TR");
+    const visibleStudents = search
+      ? state.lessonAttendance.filter((student) => String(student.fullName || "").toLocaleLowerCase("tr-TR").includes(search))
+      : state.lessonAttendance;
+    const unmarked = state.lessonAttendance.filter((student) => !student.selectedStatus).length;
+    if (els.attendanceUnmarkedCount) {
+      els.attendanceUnmarkedCount.textContent = `${unmarked} işaretlenmedi`;
+    }
+    els.lessonAttendanceCards.innerHTML = visibleStudents.length
+      ? visibleStudents.map((student) => {
+        const firstLesson = (student.lessons || []).find((lesson) => lesson.time === els.attendanceSlotTime.value) || (student.lessons || [])[0] || {};
         return `
-          <article class="attendance-card">
+          <article class="attendance-card lesson-card">
             <div>
               <strong>${escapeHtml(student.fullName)}</strong>
-              <span>${escapeHtml(firstLesson.day || "-")} · ${escapeHtml(firstLesson.time || "-")}</span>
+              <span>${escapeHtml(firstLesson.day || "-")} · ${escapeHtml(firstLesson.time || els.attendanceSlotTime.value || "-")}</span>
+              <span>${escapeHtml(student.parentName || "-")} · ${escapeHtml(student.phone || "-")}</span>
             </div>
-            <div class="attendance-actions" data-requires="attendance:write">
-              <button class="small-button good" data-action="quick-attendance" data-id="${student.id}" data-status="present" type="button">Geldi</button>
-              <button class="small-button danger" data-action="quick-attendance" data-id="${student.id}" data-status="absent" type="button">Gelmedi</button>
+            <div class="attendance-actions">
+              <button class="small-button good ${student.selectedStatus === "present" ? "selected" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="present" type="button">Geldi</button>
+              <button class="small-button danger ${student.selectedStatus === "absent" ? "selected" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="absent" type="button">Gelmedi</button>
             </div>
           </article>
         `;
       }).join("")
-      : emptyState("Bu saat için yoklama listesi boş.", "Önce öğrenci kaydı veya ders ataması gerekir.");
+      : emptyState("Bu saat için öğrenci bulunamadı.", "Tarih ve saat seçimini kontrol edin.");
     applyPermissions();
   }
 
-  async function submitAttendance(studentId, status) {
-    const student = state.students.find((item) => String(item.id) === String(studentId));
-    const firstLesson = (student?.lessons || [])[0] || {};
-    await api("/api/attendance", {
+  function markLessonAttendance(studentId, status) {
+    state.lessonAttendance = state.lessonAttendance.map((student) => (
+      String(student.id) === String(studentId) ? { ...student, selectedStatus: status } : student
+    ));
+    renderAttendanceCards();
+  }
+
+  async function saveLessonAttendance() {
+    const unmarked = state.lessonAttendance.filter((student) => !student.selectedStatus).length;
+    if (unmarked && !window.confirm(`${unmarked} öğrenci işaretlenmedi. Yine de kaydedilsin mi?`)) return;
+    const records = state.lessonAttendance
+      .filter((student) => student.selectedStatus)
+      .map((student) => ({ studentId: student.id, status: student.selectedStatus }));
+    if (!records.length) {
+      setNotice("Kaydetmek için en az bir öğrenciyi işaretleyin.", true);
+      return;
+    }
+    await api("/api/attendance/bulk", {
       method: "POST",
       body: JSON.stringify({
-        studentId,
         lessonDate: els.attendanceDate.value,
-        dayOfWeek: firstLesson.day || $("#attendanceDay").value.trim(),
-        startTime: firstLesson.time || $("#attendanceTime").value.trim(),
-        status,
-        note: $("#attendanceNote").value.trim()
+        startTime: els.attendanceSlotTime.value,
+        records
       })
     });
+    await loadAttendance();
+  }
+
+  async function loadAttendanceReport() {
+    if (!can("attendance:read")) return;
+    if (isSuperAdmin() && !state.selectedClub) {
+      switchView("superAdminView");
+      return;
+    }
+    const todayValue = new Date().toISOString().slice(0, 10);
+    els.reportDateFrom.value = els.reportDateFrom.value || todayValue;
+    els.reportDateTo.value = els.reportDateTo.value || els.reportDateFrom.value;
+    const params = new URLSearchParams({
+      dateFrom: els.reportDateFrom.value,
+      dateTo: els.reportDateTo.value,
+      status: els.reportStatus.value || "all"
+    });
+    if (els.reportTime.value.trim()) params.set("time", els.reportTime.value.trim());
+    const data = await api(`/api/attendance/report?${params}`);
+    state.attendanceReport = data.attendance || [];
+    const summary = data.summary || {};
+    els.attendanceReportSummary.innerHTML = [
+      metricCard("Toplam", summary.total || 0, "navy", "Yoklama kaydı"),
+      metricCard("Geldi", summary.present || 0, "green", "Katılım"),
+      metricCard("Gelmedi", summary.absent || 0, "red", "Devamsızlık"),
+      metricCard("Devam Oranı", `${summary.attendanceRate || 0}%`, "gold", "Geldi / toplam")
+    ].join("");
+    els.attendanceReportTable.innerHTML = state.attendanceReport.length
+      ? state.attendanceReport.map((item) => `
+          <tr>
+            <td data-label="Tarih">${dateLabel(item.lessonDate)}</td>
+            <td data-label="Saat">${escapeHtml(item.startTime || "-")}</td>
+            <td data-label="Öğrenci"><strong>${escapeHtml(item.studentName)}</strong></td>
+            <td data-label="Durum">${statusBadge(item.status)}</td>
+            <td data-label="Yoklamayı Alan">${escapeHtml(item.recordedByName || "-")}</td>
+          </tr>
+        `).join("")
+      : emptyRow(5, "Rapor kaydı bulunamadı.", "Filtreleri değiştirerek tekrar deneyebilirsiniz.");
   }
 
   function buildPaymentRows() {
@@ -685,6 +1144,10 @@
 
   async function loadPayments() {
     if (!can("payments:read")) return;
+    if (isSuperAdmin() && !state.selectedClub) {
+      switchView("superAdminView");
+      return;
+    }
     const month = els.paymentMonthFilter.value || monthValue();
     els.paymentMonthFilter.value = month;
     if (!state.students.length) await loadStudents();
@@ -769,8 +1232,87 @@
     if (option) els.paymentMonthlyFee.value = option.dataset.fee || 0;
   }
 
+  function renderImportPreview() {
+    if (!can("students:import")) return;
+    const rows = state.importPreview?.rows || [];
+    const summary = state.importPreview?.summary || {};
+    els.importSummary.innerHTML = [
+      metricCard("Okunan Satır", summary.readRows ?? 0, "navy", "Dosyadan okundu"),
+      metricCard("Aktarılacak", summary.readyRows ?? 0, "green", "Onaya hazır"),
+      metricCard("Duplicate", summary.duplicateRows ?? 0, "gold", "Atlanacak"),
+      metricCard("Hatalı", summary.errorRows ?? 0, "red", "Düzeltilmeli")
+    ].join("");
+
+    const errorRows = rows.filter((row) => (row.errors || []).length);
+    els.importErrorsPanel.classList.toggle("hidden", !errorRows.length);
+    els.importErrors.innerHTML = errorRows.length
+      ? errorRows.slice(0, 40).map((row) => `
+          <div class="compact-item">
+            <div><strong>Satır ${escapeHtml(row.rowNumber)}</strong><span>${escapeHtml(row.fullName || "-")}</span></div>
+            <span class="badge bad">${escapeHtml((row.errors || []).join(", "))}</span>
+          </div>
+        `).join("")
+      : "";
+
+    els.importCommitButton.classList.toggle("hidden", !(summary.readyRows > 0));
+    els.importPreviewTable.innerHTML = rows.length
+      ? rows.slice(0, 200).map((row) => {
+        const status = row.errors?.length ? "Hatalı" : row.duplicate ? "Duplicate" : "Hazır";
+        const tone = row.errors?.length ? "bad" : row.duplicate ? "warn" : "good";
+        return `
+          <tr>
+            <td data-label="Satır">${escapeHtml(row.rowNumber)}</td>
+            <td data-label="Öğrenci"><strong>${escapeHtml(row.fullName || "-")}</strong></td>
+            <td data-label="Telefon">${escapeHtml(row.phone || "-")}</td>
+            <td data-label="Program">${escapeHtml(row.program || "-")}</td>
+            <td data-label="Gün/Saat">${escapeHtml([row.day, row.time].filter(Boolean).join(" ") || "-")}</td>
+            <td data-label="Ücret" class="money">${money(row.monthlyFee)}</td>
+            <td data-label="Durum"><span class="badge ${tone}">${escapeHtml(status)}</span></td>
+          </tr>
+        `;
+      }).join("")
+      : emptyRow(7, "Henüz dosya önizlenmedi.", "Excel dosyası seçip Önizle butonuna basın.");
+  }
+
+  async function previewImportFile() {
+    if (!els.importFile.files.length) {
+      setNotice("Önizleme için Excel dosyası seçin.", true);
+      return;
+    }
+    const formData = new FormData();
+    formData.append("file", els.importFile.files[0]);
+    const data = await api("/api/import/students/preview", {
+      method: "POST",
+      body: formData
+    });
+    state.importPreview = data;
+    renderImportPreview();
+  }
+
+  async function commitImportRows() {
+    const rows = state.importPreview?.rows || [];
+    if (!rows.length) {
+      setNotice("Önce dosyayı önizleyin.", true);
+      return;
+    }
+    const data = await api("/api/import/students/commit", {
+      method: "POST",
+      body: JSON.stringify({ rows: rows.filter((row) => row.ready) })
+    });
+    state.importPreview = null;
+    els.importFile.value = "";
+    renderImportPreview();
+    await loadStudents();
+    await loadDashboard();
+    setNotice(`${data.report?.insertedStudents || 0} öğrenci içe aktarıldı.`);
+  }
+
   async function loadUsers() {
     if (!can("users:read")) return;
+    if (isSuperAdmin() && !state.selectedClub) {
+      switchView("superAdminView");
+      return;
+    }
     const data = await api("/api/users");
     const users = data.users || [];
     els.userTable.innerHTML = users.length
@@ -789,6 +1331,10 @@
 
   async function loadBackups() {
     if (!can("backup:read")) return;
+    if (isSuperAdmin() && !state.selectedClub) {
+      switchView("superAdminView");
+      return;
+    }
     const [backups, logs] = await Promise.all([
       api("/api/backups"),
       can("audit:read") ? api("/api/audit-logs") : Promise.resolve({ logs: [] })
@@ -818,7 +1364,7 @@
     els.attendanceDate.value = new Date().toISOString().slice(0, 10);
     els.paymentDate.value = new Date().toISOString().slice(0, 10);
     els.paymentMonthFilter.value = monthValue();
-    els.loginUsername.value = localStorage.getItem("emba.rememberedUsername") || "";
+    els.loginUsername.value = localStorage.getItem("kulupasist.rememberedUsername") || localStorage.getItem("emba.rememberedUsername") || "";
     els.rememberMe.checked = Boolean(els.loginUsername.value);
     clearStudentForm();
 
@@ -826,9 +1372,13 @@
       const data = await api("/api/auth/me");
       state.user = data.user;
       showApp();
-      await loadSettings();
-      await loadStudents();
-      await loadDashboard();
+      if (isSuperAdmin()) {
+        switchView("superAdminView");
+      } else {
+        if (!isCoach()) await loadSettings();
+        await loadStudents();
+        switchView("dashboardView");
+      }
     } catch (_error) {
       showLogin();
     }
@@ -850,14 +1400,22 @@
           password: els.loginPassword.value
         })
       });
-      if (els.rememberMe.checked) localStorage.setItem("emba.rememberedUsername", username);
-      else localStorage.removeItem("emba.rememberedUsername");
+      if (els.rememberMe.checked) localStorage.setItem("kulupasist.rememberedUsername", username);
+      else {
+        localStorage.removeItem("kulupasist.rememberedUsername");
+        localStorage.removeItem("emba.rememberedUsername");
+      }
       state.user = data.user;
+      state.selectedClub = null;
       els.loginPassword.value = "";
       showApp();
-      await loadSettings();
-      await loadStudents();
-      await loadDashboard();
+      if (isSuperAdmin()) {
+        switchView("superAdminView");
+      } else {
+        if (!isCoach()) await loadSettings();
+        await loadStudents();
+        switchView("dashboardView");
+      }
     } catch (error) {
       els.loginMessage.textContent = error.message;
       els.loginMessage.classList.add("error");
@@ -868,6 +1426,8 @@
     await api("/api/auth/logout", { method: "POST" }).catch(() => {});
     showLogin();
   });
+
+  els.backToClubsButton.addEventListener("click", clearSelectedClub);
 
   $$(".nav-button").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
@@ -882,6 +1442,43 @@
 
   els.newStudentButton.addEventListener("click", () => openStudentEditor());
   els.cancelStudentButton.addEventListener("click", () => els.studentEditor.classList.add("hidden"));
+
+  els.clubCreateUser.addEventListener("change", () => {
+    els.clubUserFields.classList.toggle("hidden", !els.clubCreateUser.checked);
+  });
+
+  els.clubForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api("/api/clubs", {
+        method: "POST",
+        body: JSON.stringify(readClubForm())
+      });
+      els.clubForm.reset();
+      els.clubUserFields.classList.add("hidden");
+      await loadClubs();
+      setNotice("Kulüp eklendi.");
+    } catch (error) {
+      setNotice(error.message, true);
+    }
+  });
+
+  els.importForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await previewImportFile();
+    } catch (error) {
+      setNotice(error.message, true);
+    }
+  });
+
+  els.importCommitButton.addEventListener("click", async () => {
+    try {
+      await commitImportRows();
+    } catch (error) {
+      setNotice(error.message, true);
+    }
+  });
 
   els.studentForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -906,13 +1503,15 @@
     const action = button.dataset.action;
     try {
       if (action === "detail-student") await showStudentDetail(id);
+      if (action === "manage-club") await selectClub(id);
       if (action === "edit-student") openStudentEditor(state.students.find((student) => String(student.id) === String(id)));
-      if (action === "quick-attendance") {
-        await submitAttendance(id, button.dataset.status);
-        await loadAttendance();
-        await loadDashboard();
-        setNotice("Yoklama kaydedildi.");
+      if (action === "mark-attendance") markLessonAttendance(id, button.dataset.status);
+      if (action === "open-attendance-slot") {
+        state.pendingAttendanceTime = button.dataset.time || "";
+        switchView("attendanceView");
       }
+      if (action === "go-student-create") switchView("studentCreateView");
+      if (action === "go-attendance") switchView("attendanceView");
       if (action === "delete-student" && window.confirm("Bu öğrenci kaydı silinsin mi?")) {
         await api(`/api/students/${id}`, { method: "DELETE" });
         await loadStudents();
@@ -931,6 +1530,17 @@
   });
 
   els.attendanceDate.addEventListener("change", loadAttendance);
+  els.attendanceSlotTime.addEventListener("change", loadLessonAttendance);
+  els.attendanceCardSearch.addEventListener("input", renderAttendanceCards);
+  els.saveBulkAttendanceButton.addEventListener("click", async () => {
+    try {
+      await saveLessonAttendance();
+      await loadDashboard();
+      setNotice("Yoklama başarıyla kaydedildi.");
+    } catch (error) {
+      setNotice(error.message, true);
+    }
+  });
   els.attendanceForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -949,6 +1559,15 @@
       await loadAttendance();
       await loadDashboard();
       setNotice("Yoklama kaydedildi.");
+    } catch (error) {
+      setNotice(error.message, true);
+    }
+  });
+
+  els.attendanceReportForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await loadAttendanceReport();
     } catch (error) {
       setNotice(error.message, true);
     }
