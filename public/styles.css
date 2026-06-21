@@ -90,11 +90,6 @@ button[disabled],
   display: none !important;
 }
 
-.auth-loading #loginView,
-.auth-loading #appShell {
-  display: none !important;
-}
-
 input,
 select {
   width: 100%;
@@ -308,29 +303,16 @@ h3 {
   display: grid;
   justify-items: start;
   gap: 10px;
-  width: 100%;
   padding-bottom: 18px;
   margin-bottom: 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 0;
-  background: transparent;
   color: #fff;
-  text-align: left;
-  box-shadow: none;
-}
-
-.brand-home {
-  cursor: pointer;
-}
-
-.brand-home:hover {
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .brand .app-logo img {
   width: auto;
-  max-width: 198px;
-  max-height: 68px;
+  max-width: 170px;
+  max-height: 58px;
 }
 
 .mobile-header img {
@@ -340,13 +322,6 @@ h3 {
   border-radius: 8px;
   object-fit: contain;
   background: transparent;
-}
-
-.mobile-brand-home {
-  min-height: 42px;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
 }
 
 .brand strong,
@@ -453,48 +428,6 @@ h3 {
 
 .topbar-actions input {
   width: min(310px, 100%);
-}
-
-.topbar-actions {
-  margin-left: auto;
-  justify-content: flex-end;
-}
-
-.user-area {
-  display: grid;
-  justify-items: end;
-  gap: 7px;
-}
-
-.user-area .user-badge {
-  text-align: right;
-}
-
-.user-badge strong,
-.user-badge span {
-  display: block;
-}
-
-.user-badge span {
-  margin-top: 2px;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.top-club-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.top-club-logo img,
-.top-club-logo .fallback-logo {
-  width: 46px;
-  height: 46px;
-  object-fit: contain;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: #fff;
 }
 
 .user-badge,
@@ -1069,15 +1002,6 @@ tbody tr:hover {
 .lesson-card .small-button.selected {
   outline: 3px solid rgba(15, 39, 66, 0.18);
   filter: saturate(1.25);
-}
-
-.attendance-report-panel {
-  margin-top: 16px;
-}
-
-.nested-table {
-  margin-top: 12px;
-  box-shadow: none;
 }
 
 .sticky-save {

@@ -12,8 +12,8 @@ const ROLE_ALIASES = {
 };
 
 const ROLE_LABELS = {
-  super_admin: "Otomasyon Sorumlusu",
-  manager: "Kulup Yetkilisi",
+  super_admin: "Super Admin",
+  manager: "Manager",
   coordinator: "Koordinator",
   coach: "Antrenor",
   assistant: "Asistan",
@@ -140,11 +140,7 @@ function normalizeCreatableRole(role, actor) {
     return null;
   }
   if (!USER_CREATABLE_ROLES.includes(requested)) return "viewer";
-  const normalized = DATABASE_ROLE_ALIASES[requested] || "viewer";
-  if (actor && !isSuperAdmin(actor) && !["coach", "assistant", "viewer"].includes(normalized)) {
-    return null;
-  }
-  return normalized;
+  return DATABASE_ROLE_ALIASES[requested] || "viewer";
 }
 
 module.exports = {

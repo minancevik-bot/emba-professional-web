@@ -77,13 +77,13 @@ function parseCookies(request) {
   );
 }
 
-function setSessionCookie(response, token, persistent = false) {
+function setSessionCookie(response, token) {
   const signed = signToken(token);
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  const maxAge = persistent ? `; Max-Age=${SESSION_DAYS * 24 * 60 * 60}` : "";
+  const maxAge = SESSION_DAYS * 24 * 60 * 60;
   response.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${encodeURIComponent(signed)}${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure}`
+    `${COOKIE_NAME}=${encodeURIComponent(signed)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure}`
   );
 }
 
