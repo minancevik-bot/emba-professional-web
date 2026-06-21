@@ -152,26 +152,6 @@ function addTenantFilter(filters, params, user, alias) {
 
 function addStudentAccessFilter(filters, params, user, alias = "s") {
   addTenantFilter(filters, params, user, alias);
-  if (!isCoach(user)) return;
-  params.push(user.id);
-  const userParam = params.length;
-  filters.push(
-    `(
-      ${alias}.created_by = $${userParam}
-      OR EXISTS (
-        SELECT 1
-        FROM student_lessons scope_lessons
-        WHERE scope_lessons.student_id = ${alias}.id
-          AND scope_lessons.trainer_user_id = $${userParam}
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM attendance_records scope_attendance
-        WHERE scope_attendance.student_id = ${alias}.id
-          AND scope_attendance.recorded_by = $${userParam}
-      )
-    )`
-  );
 }
 
 function addAttendanceAccessFilter(filters, params, user, attendanceAlias = "a") {
@@ -340,7 +320,8 @@ function optionalClubUserPayload(body) {
     username: nullableText(user.username || body.adminUsername),
     fullName: nullableText(user.fullName || body.adminFullName),
     role: normalizeCreatableRole(user.role || body.adminRole || "manager"),
-    password: String(user.password || body.adminPassword || "")
+    password: String(user.password || body.adminPassword || ""),
+    passwordConfirm: user.passwordConfirm ?? body.adminPasswordConfirm
   };
 }
 
@@ -918,6 +899,10 @@ app.post(
         response.status(400).json({ error: "Yonetici kullanici adi, ad soyad ve en az 8 karakter gecici sifre gerekir." });
         return;
       }
+      if (userPayload.passwordConfirm !== undefined && userPayload.password !== String(userPayload.passwordConfirm)) {
+        response.status(400).json({ error: "Yönetici şifreleri eşleşmiyor." });
+        return;
+      }
     }
 
     const result = await transaction(async (client) => {
@@ -1360,7 +1345,10 @@ app.get(
         OR lower(COALESCE(c.slug, '') || '-' || s.id::text) LIKE $${params.length}
       )`);
     }
-    if (status && status !== "all") {
+    if (isCoach(request.user)) {
+      params.push("Aktif");
+      filters.push(`s.status = $${params.length}`);
+    } else if (status && status !== "all") {
       params.push(status);
       filters.push(`s.status = $${params.length}`);
     }
@@ -1418,6 +1406,23 @@ app.post(
       if (!clubId) {
         const error = new Error("Kulup baglantisi bulunamadi.");
         error.status = 400;
+        throw error;
+      }
+      const duplicateParams = [clubId, payload.fullName];
+      let duplicateWhere = "club_id = $1 AND lower(full_name) = lower($2) AND status <> 'Pasif'";
+      if (payload.phone) {
+        duplicateParams.push(payload.phone);
+        duplicateWhere += ` AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = regexp_replace($${duplicateParams.length}, '\\D', '', 'g')`;
+      } else {
+        duplicateWhere += " AND COALESCE(NULLIF(trim(phone), ''), '') = ''";
+      }
+      const duplicate = await client.query(
+        `SELECT id FROM students WHERE ${duplicateWhere} LIMIT 1`,
+        duplicateParams
+      );
+      if (duplicate.rows[0]) {
+        const error = new Error("Bu öğrenci zaten kayıtlı görünüyor.");
+        error.status = 409;
         throw error;
       }
       const { rows } = await client.query(
@@ -1783,6 +1788,7 @@ app.get(
     const { rows } = await query(
       `SELECT
          s.*,
+         c.slug AS club_slug,
          COALESCE(
            json_agg(
              json_build_object('id', all_lessons.id, 'day', all_lessons.day_of_week, 'time', all_lessons.start_time)
@@ -1795,6 +1801,7 @@ app.get(
          u.full_name AS recorded_by_name
        FROM student_lessons l
        JOIN students s ON s.id = l.student_id
+       LEFT JOIN clubs c ON c.id = s.club_id
        LEFT JOIN student_lessons all_lessons ON all_lessons.student_id = s.id
        LEFT JOIN attendance_records a
          ON a.student_id = s.id

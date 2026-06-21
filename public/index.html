@@ -7,6 +7,14 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body class="auth-loading">
+    <section id="loadingView" class="loading-view" aria-live="polite">
+      <div class="loading-card">
+        <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+        <strong class="text-logo-fallback" hidden>KulüpAsist</strong>
+        <span>Yükleniyor...</span>
+      </div>
+    </section>
+
     <section id="loginView" class="login-view">
       <div class="login-shell">
         <div class="login-brand-panel">
@@ -64,7 +72,6 @@
           <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Yönetim Paneli</span></button>
           <button class="nav-button" data-view="dashboardView" data-permission="dashboard:read"><span>Panel</span></button>
           <button class="nav-button" data-view="studentsView" data-permission="students:read"><span>Öğrenciler</span></button>
-          <button class="nav-button" data-view="studentCreateView" data-permission="students:write" data-coach-only="true"><span>Öğrenci Ekle</span></button>
           <button class="nav-button" data-view="attendanceView" data-permission="attendance:read"><span>Yoklama</span></button>
           <button class="nav-button" data-view="paymentsView" data-permission="payments:read"><span>Ödemeler</span></button>
           <button class="nav-button" data-view="importView" data-permission="students:import"><span>Toplu İçe Aktar</span></button>
@@ -95,7 +102,11 @@
             </div>
             <div class="user-area">
               <span id="userBadge" class="user-badge"></span>
-              <input id="globalSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
+              <div class="search-box">
+                <input id="globalSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
+                <button id="globalSearchButton" class="secondary" type="button">Ara</button>
+                <button id="globalSearchClearButton" class="secondary" type="button">Temizle</button>
+              </div>
             </div>
             <button id="logoutButton" class="secondary" type="button">Çıkış</button>
           </div>
@@ -165,14 +176,11 @@
                   <label>Yönetici ad soyad<input id="clubAdminFullName" autocomplete="name"></label>
                   <label>Yönetici rolü
                     <select id="clubAdminRole">
-                      <option value="manager">Kulüp Yetkilisi</option>
-                      <option value="coordinator">Koordinatör</option>
-                      <option value="coach">Antrenör</option>
-                      <option value="assistant">Asistan</option>
-                      <option value="viewer">İzleyici</option>
+                      <option value="manager">Kulüp Yöneticisi</option>
                     </select>
                   </label>
                   <label>Geçici şifre<input id="clubAdminPassword" type="password" autocomplete="new-password" minlength="8"></label>
+                  <label>Geçici şifre tekrar<input id="clubAdminPasswordConfirm" type="password" autocomplete="new-password" minlength="8"></label>
                 </div>
                 <button type="submit" data-requires="users:write">Kulüp Ekle</button>
               </form>
@@ -242,7 +250,7 @@
             <div class="filter-row">
               <select id="studentStatusFilter">
                 <option value="all">Tüm durumlar</option>
-                <option>Aktif</option>
+                <option selected>Aktif</option>
                 <option>Bekleyen</option>
                 <option>Pasif</option>
               </select>
@@ -405,7 +413,11 @@
             </div>
             <div class="filter-row">
               <input id="paymentMonthFilter" type="month">
-              <input id="paymentSearch" type="search" placeholder="Öğrenci veya veli ara" autocomplete="off">
+              <div class="search-box compact-search">
+                <input id="paymentSearch" type="search" placeholder="Öğrenci veya veli ara" autocomplete="off">
+                <button id="paymentSearchButton" class="secondary" type="button">Ara</button>
+                <button id="paymentSearchClearButton" class="secondary" type="button">Temizle</button>
+              </div>
               <select id="paymentStatusFilter">
                 <option value="all">Tümü</option>
                 <option value="paid">Ödendi</option>
@@ -478,6 +490,14 @@
               <label>Ad soyad<input id="newUserFullName" autocomplete="name" required></label>
               <input id="editUserId" type="hidden">
               <label>Rol<select id="newUserRole"><option value="coach">Antrenör</option><option value="assistant">Asistan</option><option value="viewer">İzleyici</option><option value="coordinator">Koordinatör</option><option value="manager">Kulüp Yetkilisi</option></select></label>
+              <div id="coachScopeHint" class="nested-fields scope-hint hidden">
+                <strong>Antrenör yetki kapsamı</strong>
+                <label class="check-row">
+                  <input type="radio" checked disabled>
+                  <span>Tüm aktif öğrenciler</span>
+                </label>
+                <p class="muted">Özel öğrenci/grup ataması için veri modeli hazırlandığında bu alan genişletilebilir.</p>
+              </div>
               <label>Durum<select id="newUserActive"><option value="true">Aktif</option><option value="false">Pasif</option></select></label>
               <label>Şifre<input id="newUserPassword" type="password" autocomplete="new-password" minlength="8"></label>
               <button id="saveUserButton" type="submit" data-requires="users:write">Kullanıcı Ekle</button>

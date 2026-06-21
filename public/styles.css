@@ -1,19 +1,19 @@
 :root {
   color-scheme: light;
-  --bg: #f3f6fa;
+  --bg: #f6f7fb;
   --surface: #ffffff;
   --surface-soft: #f8fafc;
-  --ink: #132033;
+  --ink: #111827;
   --muted: #64748b;
-  --line: #dce5ef;
-  --nav: #0f2742;
-  --nav-2: #173b63;
-  --gold: #d5961f;
-  --gold-soft: #fff5d8;
+  --line: #e5e7eb;
+  --nav: #111827;
+  --nav-2: #1f2937;
+  --gold: #dc2626;
+  --gold-soft: #fee2e2;
   --green: #16825f;
   --green-soft: #e2f6ee;
-  --red: #c24130;
-  --red-soft: #ffe7e2;
+  --red: #dc2626;
+  --red-soft: #fee2e2;
   --blue: #2563eb;
   --shadow: 0 16px 40px rgba(15, 39, 66, 0.08);
 }
@@ -93,6 +93,46 @@ button[disabled],
 .auth-loading #loginView,
 .auth-loading #appShell {
   display: none !important;
+}
+
+.loading-view {
+  display: none;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.auth-loading #loadingView {
+  display: grid;
+}
+
+body:not(.auth-loading) #loadingView {
+  display: none !important;
+}
+
+.loading-card {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(360px, 100%);
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.loading-card img {
+  width: auto;
+  max-width: 220px;
+  max-height: 90px;
+  object-fit: contain;
+}
+
+.loading-card span {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 input,
@@ -455,6 +495,27 @@ h3 {
   width: min(310px, 100%);
 }
 
+.search-box {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  width: min(460px, 100%);
+}
+
+.search-box input {
+  width: 100%;
+}
+
+.search-box button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.compact-search {
+  width: min(520px, 100%);
+}
+
 .topbar-actions {
   margin-left: auto;
   justify-content: flex-end;
@@ -683,6 +744,15 @@ h3 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-soft);
+}
+
+.scope-hint {
+  min-width: min(280px, 100%);
+}
+
+.scope-hint p {
+  margin: 0;
+  font-size: 12px;
 }
 
 .inline-check {
@@ -1242,6 +1312,15 @@ tbody tr:hover {
   }
 
   .topbar-actions input {
+    width: 100%;
+  }
+
+  .search-box {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .search-box button {
     width: 100%;
   }
 }
