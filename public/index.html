@@ -288,14 +288,14 @@
               <div class="form-section">
                 <h3>C. Ders Bilgileri</h3>
                 <div class="lesson-grid">
-                  <label>1. Gün<input id="lessonDay1" placeholder="Salı"></label>
-                  <label>1. Saat<input id="lessonTime1" placeholder="17:30"></label>
-                  <label>2. Gün<input id="lessonDay2" placeholder="Pazar"></label>
-                  <label>2. Saat<input id="lessonTime2" placeholder="10:00"></label>
-                  <label>3. Gün<input id="lessonDay3"></label>
-                  <label>3. Saat<input id="lessonTime3"></label>
-                  <label>4. Gün<input id="lessonDay4"></label>
-                  <label>4. Saat<input id="lessonTime4"></label>
+                  <label>1. Gün<select id="lessonDay1"></select></label>
+                  <label>1. Saat<select id="lessonTime1"></select></label>
+                  <label>2. Gün<select id="lessonDay2"></select></label>
+                  <label>2. Saat<select id="lessonTime2"></select></label>
+                  <label>3. Gün<select id="lessonDay3"></select></label>
+                  <label>3. Saat<select id="lessonTime3"></select></label>
+                  <label>4. Gün<select id="lessonDay4"></select></label>
+                  <label>4. Saat<select id="lessonTime4"></select></label>
                 </div>
               </div>
 
@@ -347,7 +347,8 @@
             </div>
             <div class="filter-row">
               <input id="attendanceDate" type="date">
-              <select id="attendanceSlotTime"></select>
+              <select id="attendanceSlotTime" class="time-source-select"></select>
+              <div id="attendanceTimeGrid" class="time-chip-grid" aria-label="Ders saatleri"></div>
             </div>
           </div>
           <section class="panel">

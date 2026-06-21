@@ -141,8 +141,13 @@ function normalizeCreatableRole(role, actor) {
   }
   if (!USER_CREATABLE_ROLES.includes(requested)) return "viewer";
   const normalized = DATABASE_ROLE_ALIASES[requested] || "viewer";
-  if (actor && !isSuperAdmin(actor) && !["coach", "assistant", "viewer"].includes(normalized)) {
-    return null;
+  if (actor && !isSuperAdmin(actor)) {
+    if (normalizeUserRole(actor) === "manager") {
+      return ["manager", "coach", "assistant"].includes(normalized) ? normalized : null;
+    }
+    if (!["coach", "assistant", "viewer"].includes(normalized)) {
+      return null;
+    }
   }
   return normalized;
 }

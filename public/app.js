@@ -27,6 +27,14 @@
     planned: "Planlandı"
   };
 
+  const lessonDays = ["", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
+  const lessonTimes = Array.from({ length: 26 }, (_, index) => {
+    const totalMinutes = 9 * 60 + index * 30;
+    const hour = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  });
+
   const viewMeta = {
     superAdminView: ["KulüpAsist Merkez", "Kulüp ve kullanıcı yönetim merkezi"],
     dashboardView: ["Yönetim Paneli", "Kulüp operasyonlarını tek ekrandan takip edin."],
@@ -96,6 +104,7 @@
     cancelStudentButton: $("#cancelStudentButton"),
     attendanceDate: $("#attendanceDate"),
     attendanceSlotTime: $("#attendanceSlotTime"),
+    attendanceTimeGrid: $("#attendanceTimeGrid"),
     attendanceCardSearch: $("#attendanceCardSearch"),
     attendanceUnmarkedCount: $("#attendanceUnmarkedCount"),
     lessonAttendanceCards: $("#lessonAttendanceCards"),
@@ -176,6 +185,58 @@
     const [year, monthNumber] = month.split("-");
     const date = new Date(Number(year), Number(monthNumber) - 1, 1);
     return new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" }).format(date);
+  }
+
+  function normalizeTimeValue(value) {
+    const match = String(value || "").trim().replace(".", ":").match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$/);
+    if (!match) return "";
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || ![0, 30].includes(minute)) return "";
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+
+  function normalizeLessonDay(value) {
+    const input = String(value || "").trim().toLocaleLowerCase("tr-TR");
+    return lessonDays.find((day) => day.toLocaleLowerCase("tr-TR") === input) || "";
+  }
+
+  function ageGroupFromBirthYear(value) {
+    const birthYear = Number(value);
+    const currentYear = new Date().getFullYear();
+    if (!Number.isInteger(birthYear) || birthYear < 1930 || birthYear > currentYear) return "";
+    const age = currentYear - birthYear;
+    if (age >= 18) return "Yetişkin";
+    if (age >= 16) return "16+ Yaş";
+    if (age >= 13) return "13-15 Yaş";
+    if (age >= 10) return "10-12 Yaş";
+    if (age >= 7) return "7-9 Yaş";
+    if (age >= 4) return "4-6 Yaş";
+    return "4-6 Yaş";
+  }
+
+  function populateLessonControls() {
+    const dayOptions = lessonDays.map((day) => `<option value="${escapeHtml(day)}">${day ? escapeHtml(day) : "Gün seçin"}</option>`).join("");
+    const timeOptions = [`<option value="">Saat seçin</option>`, ...lessonTimes.map((time) => `<option value="${time}">${time}</option>`)].join("");
+    for (let index = 1; index <= 4; index += 1) {
+      const daySelect = $(`#lessonDay${index}`);
+      const timeSelect = $(`#lessonTime${index}`);
+      if (daySelect) daySelect.innerHTML = dayOptions;
+      if (timeSelect) timeSelect.innerHTML = timeOptions;
+    }
+  }
+
+  function updateAgeGroupFromBirthYear(showWarning = false) {
+    const birthYearInput = $("#studentBirthYear");
+    const ageGroupInput = $("#studentAgeGroup");
+    if (!birthYearInput || !ageGroupInput) return;
+    if (!birthYearInput.value) return;
+    const group = ageGroupFromBirthYear(birthYearInput.value);
+    if (!group) {
+      if (showWarning) setNotice("Geçerli bir doğum yılı giriniz.", true);
+      return;
+    }
+    ageGroupInput.value = group;
   }
 
   function todayName() {
@@ -401,7 +462,7 @@
       els.dashboardClubLogo.hidden = !logo;
       if (logo) els.dashboardClubLogo.src = logo;
       if (els.dashboardClubFallback) els.dashboardClubFallback.classList.toggle("hidden", Boolean(logo));
-      if (els.dashboardClubFallback) els.dashboardClubFallback.textContent = initials(selectedName);
+      if (els.dashboardClubFallback) els.dashboardClubFallback.textContent = logo ? initials(selectedName) : "Logo Yok";
     }
     if (els.topClubLogo) {
       const selectedSlug = String(state.selectedClub?.slug || "").toLowerCase();
@@ -413,7 +474,7 @@
         if (logo) els.topClubLogoImage.src = logo;
       }
       if (els.topClubLogoFallback) {
-        els.topClubLogoFallback.textContent = initials(selectedName);
+        els.topClubLogoFallback.textContent = logo ? initials(selectedName) : "Logo Yok";
         els.topClubLogoFallback.hidden = Boolean(logo);
       }
     }
@@ -424,10 +485,12 @@
     els.appShell.classList.remove("hidden");
     document.body.classList.remove("auth-loading");
     const clubText = currentClubName();
-    els.userBadge.innerHTML = `
-      <strong>${escapeHtml(state.user.roleLabel || state.user.role || "")}</strong>
-      <span>${clubText ? escapeHtml(clubText) : "KulüpAsist Merkez"}</span>
-    `;
+    const roleText = state.user.roleLabel || state.user.role || "";
+    const nameText = state.user.fullName || "";
+    const userLabel = isSuperAdmin()
+      ? "Otomasyon Sorumlusu · KulüpAsist Merkez"
+      : [nameText, roleText, clubText].filter(Boolean).join(" · ");
+    els.userBadge.innerHTML = `<strong>${escapeHtml(userLabel || `${roleText} · ${clubText || ""}`)}</strong>`;
     state.activeView = isSuperAdmin() ? "superAdminView" : "dashboardView";
     updateRoleMenuLabels();
     updateClubContext();
@@ -530,7 +593,7 @@
         return `
           <article class="club-card ${isEmba ? "primary-club" : ""}">
             <div class="club-card-head">
-              ${logo ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(club.name)} logosu">` : `<span class="fallback-logo small">KA</span>`}
+              ${logo ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(club.name)} logosu">` : `<span class="fallback-logo small">Logo Yok</span>`}
               <div>
                 <strong>${escapeHtml(club.name)}</strong>
                 <span>${escapeHtml(club.slug)} · ${escapeHtml(club.plan)}</span>
@@ -836,23 +899,24 @@
     runStudentSearch();
   }
 
-  async function loadStudents() {
+  async function loadStudents(options = {}) {
     if (!can("students:read")) return;
     if (isSuperAdmin() && !state.selectedClub) {
       switchView("superAdminView");
       return;
     }
-    const q = currentStudentSearch();
-    const status = els.studentStatusFilter?.value || "Aktif";
+    const q = options.q ?? currentStudentSearch();
+    const status = options.status ?? (els.studentStatusFilter?.value || "Aktif");
+    const shouldRender = options.render !== false;
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (status && status !== "all") params.set("status", status);
-    els.studentTable.innerHTML = emptyRow(8, "Veriler yükleniyor...", "Öğrenci listesi hazırlanıyor.");
+    if (shouldRender) els.studentTable.innerHTML = emptyRow(8, "Veriler yükleniyor...", "Öğrenci listesi hazırlanıyor.");
     const data = await api(`/api/students?${params}`);
     state.students = data.students || [];
-    renderStudents();
+    if (shouldRender) renderStudents();
     fillStudentSelects();
-    if (state.activeView === "dashboardView") {
+    if (shouldRender && state.activeView === "dashboardView") {
       renderTodayLessons();
       renderRecentStudents();
       renderPaymentWaiting();
@@ -860,7 +924,7 @@
   }
 
   function renderStudents() {
-    els.studentCount.textContent = `${state.students.length} kayıt`;
+    els.studentCount.textContent = `${state.students.length} öğrenci listeleniyor`;
     if (!state.students.length) {
       const hasSearch = Boolean(currentStudentSearch());
       els.studentTable.innerHTML = hasSearch
@@ -981,7 +1045,7 @@
     $("#studentStatus").value = student.status;
     $("#studentFullName").value = student.fullName || "";
     $("#studentBirthYear").value = student.birthYear || "";
-    $("#studentAgeGroup").value = student.ageGroup || "";
+    $("#studentAgeGroup").value = student.ageGroup || ageGroupFromBirthYear(student.birthYear) || "";
     $("#studentProgram").value = student.program || "";
     $("#studentLevel").value = student.level || "Başlangıç";
     $("#studentPackageCode").value = student.packageCode || "";
@@ -997,16 +1061,16 @@
     $("#studentSocial").value = student.socialMediaPermission ? "true" : "false";
     $("#studentNote").value = student.note || "";
     (student.lessons || []).slice(0, 4).forEach((lesson, index) => {
-      $(`#lessonDay${index + 1}`).value = lesson.day || "";
-      $(`#lessonTime${index + 1}`).value = lesson.time || "";
+      $(`#lessonDay${index + 1}`).value = normalizeLessonDay(lesson.day);
+      $(`#lessonTime${index + 1}`).value = normalizeTimeValue(lesson.time) || "";
     });
   }
 
   function readLessons() {
     const lessons = [];
     for (let index = 1; index <= 4; index += 1) {
-      const day = $(`#lessonDay${index}`).value.trim();
-      const time = $(`#lessonTime${index}`).value.trim();
+      const day = normalizeLessonDay($(`#lessonDay${index}`).value);
+      const time = normalizeTimeValue($(`#lessonTime${index}`).value);
       if (day && time) lessons.push({ day, time });
     }
     return lessons;
@@ -1067,14 +1131,21 @@
     els.attendanceDate.value = date;
     const slotsData = await api(`/api/attendance/slots?date=${encodeURIComponent(date)}`);
     state.attendanceSlots = slotsData.slots || [];
-    const currentTime = state.pendingAttendanceTime || els.attendanceSlotTime.value;
+    const slotCounts = new Map(state.attendanceSlots.map((slot) => [normalizeTimeValue(slot.time), Number(slot.studentCount || 0)]));
+    const firstActiveSlot = state.attendanceSlots.map((slot) => normalizeTimeValue(slot.time)).find(Boolean);
+    const currentTime = normalizeTimeValue(state.pendingAttendanceTime || els.attendanceSlotTime.value) || firstActiveSlot || lessonTimes[0];
     state.pendingAttendanceTime = null;
-    els.attendanceSlotTime.innerHTML = state.attendanceSlots.length
-      ? state.attendanceSlots.map((slot) => `<option value="${escapeHtml(slot.time)}">${escapeHtml(slot.time)} · ${slot.studentCount} öğrenci</option>`).join("")
-      : `<option value="">Ders saati yok</option>`;
-    if (currentTime && state.attendanceSlots.some((slot) => slot.time === currentTime)) {
+    els.attendanceSlotTime.innerHTML = lessonTimes
+      .map((time) => {
+        const count = slotCounts.get(time) || 0;
+        const label = count ? `${time} · ${count} öğrenci` : time;
+        return `<option value="${time}">${escapeHtml(label)}</option>`;
+      })
+      .join("");
+    if (currentTime && lessonTimes.includes(currentTime)) {
       els.attendanceSlotTime.value = currentTime;
     }
+    renderAttendanceTimeGrid();
     await loadLessonAttendance();
     els.attendanceTable.innerHTML = emptyRow(6, "Veriler yükleniyor...", "Yoklama kayıtları hazırlanıyor.");
     const data = await api(`/api/attendance?date=${encodeURIComponent(date)}`);
@@ -1094,9 +1165,22 @@
     await loadAttendanceReport();
   }
 
+  function renderAttendanceTimeGrid() {
+    if (!els.attendanceTimeGrid) return;
+    const selected = normalizeTimeValue(els.attendanceSlotTime.value);
+    const slotCounts = new Map(state.attendanceSlots.map((slot) => [normalizeTimeValue(slot.time), Number(slot.studentCount || 0)]));
+    els.attendanceTimeGrid.innerHTML = lessonTimes.map((time) => {
+      const count = slotCounts.get(time) || 0;
+      const activeClass = time === selected ? " active" : "";
+      const countLabel = count ? `<span>${count}</span>` : "";
+      return `<button class="time-chip${activeClass}" data-action="select-attendance-time" data-time="${time}" type="button">${time}${countLabel}</button>`;
+    }).join("");
+  }
+
   async function loadLessonAttendance() {
     const date = els.attendanceDate.value || new Date().toISOString().slice(0, 10);
-    const time = els.attendanceSlotTime.value;
+    const time = normalizeTimeValue(els.attendanceSlotTime.value);
+    renderAttendanceTimeGrid();
     if (!time) {
       state.lessonAttendance = [];
       renderAttendanceCards();
@@ -1124,7 +1208,7 @@
     }
     els.lessonAttendanceCards.innerHTML = visibleStudents.length
       ? visibleStudents.map((student) => {
-        const firstLesson = (student.lessons || []).find((lesson) => lesson.time === els.attendanceSlotTime.value) || (student.lessons || [])[0] || {};
+        const firstLesson = (student.lessons || []).find((lesson) => normalizeTimeValue(lesson.time) === normalizeTimeValue(els.attendanceSlotTime.value)) || (student.lessons || [])[0] || {};
         return `
           <article class="attendance-card lesson-card">
             <div>
@@ -1164,7 +1248,7 @@
       method: "POST",
       body: JSON.stringify({
         lessonDate: els.attendanceDate.value,
-        startTime: els.attendanceSlotTime.value,
+        startTime: normalizeTimeValue(els.attendanceSlotTime.value),
         records
       })
     });
@@ -1248,7 +1332,7 @@
     }
     const month = els.paymentMonthFilter.value || monthValue();
     els.paymentMonthFilter.value = month;
-    if (!state.students.length) await loadStudents();
+    await loadStudents({ q: "", status: "Aktif", render: false });
     els.paymentTable.innerHTML = emptyRow(9, "Veriler yükleniyor...", "Ödeme kayıtları hazırlanıyor.");
     const data = await api(`/api/payments?month=${encodeURIComponent(month)}`);
     state.payments = data.payments || [];
@@ -1440,7 +1524,7 @@
     if (!els.newUserRole) return;
     const allowed = isSuperAdmin()
       ? ["coach", "assistant", "viewer", "coordinator", "manager"]
-      : ["coach", "assistant", "viewer"];
+      : (normalizedRole() === "manager" ? ["manager", "coach", "assistant"] : ["coach", "assistant"]);
     Array.from(els.newUserRole.options).forEach((option) => {
       option.hidden = !allowed.includes(option.value);
       option.disabled = !allowed.includes(option.value);
@@ -1518,6 +1602,7 @@
   }
 
   async function bootstrap() {
+    populateLessonControls();
     els.attendanceDate.value = new Date().toISOString().slice(0, 10);
     els.paymentDate.value = new Date().toISOString().slice(0, 10);
     els.paymentMonthFilter.value = monthValue();
@@ -1620,6 +1705,8 @@
 
   els.newStudentButton.addEventListener("click", () => openStudentEditor());
   els.cancelStudentButton.addEventListener("click", () => els.studentEditor.classList.add("hidden"));
+  $("#studentBirthYear")?.addEventListener("input", () => updateAgeGroupFromBirthYear(false));
+  $("#studentBirthYear")?.addEventListener("blur", () => updateAgeGroupFromBirthYear(true));
 
   els.clubCreateUser.addEventListener("change", () => {
     els.clubUserFields.classList.toggle("hidden", !els.clubCreateUser.checked);
@@ -1666,6 +1753,10 @@
   els.studentForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (state.studentSaving) return;
+    if ($("#studentBirthYear").value && !ageGroupFromBirthYear($("#studentBirthYear").value)) {
+      setNotice("Geçerli bir doğum yılı giriniz.", true);
+      return;
+    }
     const id = $("#studentId").value;
     const method = id ? "PATCH" : "POST";
     const url = id ? `/api/students/${id}` : "/api/students";
@@ -1704,6 +1795,10 @@
       if (action === "manage-club") await selectClub(id);
       if (action === "edit-student") openStudentEditor(state.students.find((student) => String(student.id) === String(id)));
       if (action === "mark-attendance") markLessonAttendance(id, button.dataset.status);
+      if (action === "select-attendance-time") {
+        els.attendanceSlotTime.value = button.dataset.time || "";
+        await loadLessonAttendance();
+      }
       if (action === "open-attendance-slot") {
         state.pendingAttendanceTime = button.dataset.time || "";
         switchView("attendanceView");
@@ -1764,7 +1859,7 @@
           studentId: els.attendanceStudent.value,
           lessonDate: els.attendanceDate.value,
           dayOfWeek: $("#attendanceDay").value.trim(),
-          startTime: $("#attendanceTime").value.trim(),
+          startTime: normalizeTimeValue($("#attendanceTime").value),
           status: $("#attendanceStatus").value,
           note: $("#attendanceNote").value.trim()
         })

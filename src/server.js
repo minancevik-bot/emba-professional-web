@@ -154,6 +154,29 @@ function addStudentAccessFilter(filters, params, user, alias = "s") {
   addTenantFilter(filters, params, user, alias);
 }
 
+const CLUB_MANAGED_ROLES = new Set(["manager", "coach", "assistant"]);
+const CLUB_MANAGED_DATABASE_ROLES = ["manager", "coach", "assistant", "antrenor"];
+const SYSTEM_USER_ROLES = new Set(["admin", "super_admin", "automation_admin", "automation"]);
+
+function isSystemUserRole(row) {
+  const rawRole = String(row?.role || "").trim();
+  const username = String(row?.username || "").trim().toLowerCase();
+  return SYSTEM_USER_ROLES.has(rawRole) || normalizeUserRole(row) === "super_admin" || username === "admin";
+}
+
+function canManageClubUser(actor, target) {
+  if (isSuperAdmin(actor)) return true;
+  if (!target || isSystemUserRole(target)) return false;
+  if (String(getUserClubId(actor) || "") !== String(target.club_id || target.clubId || "")) return false;
+  return CLUB_MANAGED_ROLES.has(normalizeUserRole(target));
+}
+
+function addClubManagedUserFilter(filters, params, user, alias = "users") {
+  if (isSuperAdmin(user)) return;
+  params.push(CLUB_MANAGED_DATABASE_ROLES);
+  filters.push(`${alias}.role = ANY($${params.length}::text[])`);
+}
+
 function addAttendanceAccessFilter(filters, params, user, attendanceAlias = "a") {
   addTenantFilter(filters, params, user, attendanceAlias);
   if (!isCoach(user)) return;
@@ -355,6 +378,20 @@ function normalizePeriodMonth(value) {
   return `${new Date().toISOString().slice(0, 7)}-01`;
 }
 
+function normalizeLessonTime(value) {
+  const input = String(value || "").trim().replace(".", ":");
+  const match = input.match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || ![0, 30].includes(minute)) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function lessonTimeSql(alias) {
+  return `lpad(split_part(replace(${alias}.start_time, '.', ':'), ':', 1), 2, '0') || ':' || lpad(split_part(replace(${alias}.start_time, '.', ':'), ':', 2), 2, '0')`;
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -388,7 +425,12 @@ function studentPayload(body) {
     monthlyFee: numberValue(body.monthlyFee),
     registrationDate: body.registrationDate || today(),
     note: nullableText(body.note),
-    lessons: Array.isArray(body.lessons) ? body.lessons.slice(0, 4) : []
+    lessons: Array.isArray(body.lessons)
+      ? body.lessons.slice(0, 4).map((lesson) => ({
+        ...lesson,
+        time: normalizeLessonTime(lesson?.time)
+      })).filter((lesson) => lesson.time)
+      : []
   };
 }
 
@@ -455,7 +497,7 @@ function mapAttendance(row) {
     studentName: row.student_name,
     lessonDate: row.lesson_date,
     dayOfWeek: row.day_of_week,
-    startTime: row.start_time,
+    startTime: normalizeLessonTime(row.start_time) || row.start_time,
     status: row.status,
     note: row.note,
     recordedByName: row.recorded_by_name,
@@ -664,7 +706,7 @@ async function fetchStudent(client, id, user) {
        c.slug AS club_slug,
        COALESCE(
          json_agg(
-           json_build_object('id', l.id, 'day', l.day_of_week, 'time', l.start_time)
+           json_build_object('id', l.id, 'day', l.day_of_week, 'time', ${lessonTimeSql("l")})
            ORDER BY l.id
          ) FILTER (WHERE l.id IS NOT NULL),
          '[]'
@@ -686,7 +728,7 @@ async function replaceLessons(client, studentId, lessons, studentContext, traine
   await client.query("DELETE FROM student_lessons WHERE student_id = $1 AND club_id = $2", [studentId, clubId]);
   for (const lesson of lessons) {
     const day = nullableText(lesson.day);
-    const time = nullableText(lesson.time);
+    const time = normalizeLessonTime(lesson.time);
     if (!day || !time) continue;
     await client.query(
       `INSERT INTO student_lessons (student_id, club_id, branch_id, day_of_week, start_time, trainer_user_id)
@@ -1362,7 +1404,7 @@ app.get(
          c.slug AS club_slug,
          COALESCE(
            json_agg(
-             json_build_object('id', l.id, 'day', l.day_of_week, 'time', l.start_time)
+             json_build_object('id', l.id, 'day', l.day_of_week, 'time', ${lessonTimeSql("l")})
              ORDER BY l.id
            ) FILTER (WHERE l.id IS NOT NULL),
            '[]'
@@ -1652,6 +1694,7 @@ app.get(
       params.push(period);
       filters.push(`p.period_month = $${params.length}`);
     }
+    filters.push("s.status = 'Aktif'");
     addTenantFilter(filters, params, request.user, "p");
     const where = whereClause(filters);
     const { rows } = await query(
@@ -1746,16 +1789,16 @@ app.get(
     const lessonDate = request.query.date || today();
     const dayOfWeek = dayNameForDate(lessonDate);
     const params = [dayOfWeek];
-    const filters = ["l.day_of_week = $1", "s.status = 'Aktif'"];
+    const filters = ["lower(l.day_of_week) = lower($1)", "s.status = 'Aktif'"];
     addTenantFilter(filters, params, request.user, "s");
     const { rows } = await query(
-      `SELECT l.start_time, COUNT(DISTINCT s.id)::int AS student_count
+      `SELECT ${lessonTimeSql("l")} AS start_time, COUNT(DISTINCT s.id)::int AS student_count
        FROM student_lessons l
        JOIN students s ON s.id = l.student_id
        LEFT JOIN clubs c ON c.id = s.club_id
        ${whereClause(filters)}
-       GROUP BY l.start_time
-       ORDER BY l.start_time ASC`,
+       GROUP BY ${lessonTimeSql("l")}
+       ORDER BY ${lessonTimeSql("l")} ASC`,
       params
     );
     response.json({
@@ -1776,14 +1819,14 @@ app.get(
   requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const lessonDate = request.query.date || today();
-    const startTime = nullableText(request.query.time);
+    const startTime = normalizeLessonTime(request.query.time);
     if (!startTime) {
       response.status(400).json({ error: "Ders saati secilmelidir." });
       return;
     }
     const dayOfWeek = dayNameForDate(lessonDate);
     const params = [dayOfWeek, startTime, lessonDate];
-    const filters = ["l.day_of_week = $1", "l.start_time = $2", "s.status = 'Aktif'"];
+    const filters = ["lower(l.day_of_week) = lower($1)", `${lessonTimeSql("l")} = $2`, "s.status = 'Aktif'"];
     addTenantFilter(filters, params, request.user, "s");
     const { rows } = await query(
       `SELECT
@@ -1791,7 +1834,7 @@ app.get(
          c.slug AS club_slug,
          COALESCE(
            json_agg(
-             json_build_object('id', all_lessons.id, 'day', all_lessons.day_of_week, 'time', all_lessons.start_time)
+             json_build_object('id', all_lessons.id, 'day', all_lessons.day_of_week, 'time', ${lessonTimeSql("all_lessons")})
              ORDER BY all_lessons.id
            ) FILTER (WHERE all_lessons.id IS NOT NULL),
            '[]'
@@ -1806,7 +1849,7 @@ app.get(
        LEFT JOIN attendance_records a
          ON a.student_id = s.id
         AND a.lesson_date = $3
-        AND a.start_time = l.start_time
+        AND a.start_time = ${lessonTimeSql("l")}
        LEFT JOIN users u ON u.id = a.recorded_by
        ${whereClause(filters)}
        GROUP BY s.id, c.slug, a.status, a.note, u.full_name
@@ -1834,7 +1877,7 @@ app.post(
   requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const lessonDate = request.body.lessonDate || today();
-    const startTime = nullableText(request.body.startTime);
+    const startTime = normalizeLessonTime(request.body.startTime);
     const records = Array.isArray(request.body.records) ? request.body.records : [];
     if (!startTime || !records.length) {
       response.status(400).json({ error: "Ders saati ve yoklama kayitlari zorunludur." });
@@ -1850,8 +1893,8 @@ app.post(
          JOIN student_lessons l ON l.student_id = s.id
          WHERE s.club_id = $1
            AND s.status = 'Aktif'
-           AND l.day_of_week = $2
-           AND l.start_time = $3
+           AND lower(l.day_of_week) = lower($2)
+           AND ${lessonTimeSql("l")} = $3
            AND s.id = ANY($4::bigint[])`,
         [clubId, dayOfWeek, startTime, ids]
       );
@@ -1906,13 +1949,13 @@ app.get(
     const dateTo = request.query.dateTo || request.query.to || dateFrom;
     const params = [dateFrom, dateTo];
     const filters = ["a.lesson_date BETWEEN $1 AND $2"];
-    const startTime = nullableText(request.query.time);
+    const startTime = normalizeLessonTime(request.query.time);
     const status = nullableText(request.query.status);
     const coachId = Number(request.query.coachId || 0);
     const studentId = Number(request.query.studentId || 0);
     if (startTime) {
       params.push(startTime);
-      filters.push(`a.start_time = $${params.length}`);
+      filters.push(`${lessonTimeSql("a")} = $${params.length}`);
     }
     if (status && status !== "all") {
       params.push(status);
@@ -1933,7 +1976,7 @@ app.get(
        JOIN students s ON s.id = a.student_id
        LEFT JOIN users u ON u.id = a.recorded_by
        ${whereClause(filters)}
-       ORDER BY a.lesson_date DESC, a.start_time ASC, lower(s.full_name) ASC
+       ORDER BY a.lesson_date DESC, ${lessonTimeSql("a")} ASC, lower(s.full_name) ASC
        LIMIT 1000`,
       params
     );
@@ -1968,7 +2011,7 @@ app.get(
        JOIN students s ON s.id = a.student_id
        LEFT JOIN users u ON u.id = a.recorded_by
        ${whereClause(filters)}
-       ORDER BY a.start_time ASC, lower(s.full_name) ASC`,
+       ORDER BY ${lessonTimeSql("a")} ASC, lower(s.full_name) ASC`,
       params
     );
     response.json({ attendance: rows.map(mapAttendance) });
@@ -1983,7 +2026,7 @@ app.post(
   asyncHandler(async (request, response) => {
     const studentId = Number(request.body.studentId);
     const lessonDate = request.body.lessonDate || today();
-    const startTime = nullableText(request.body.startTime) || "00:00";
+    const startTime = normalizeLessonTime(request.body.startTime) || "00:00";
     const dayOfWeek = nullableText(request.body.dayOfWeek);
     const status = ["present", "absent", "excused", "planned"].includes(request.body.status)
       ? request.body.status
@@ -2046,6 +2089,7 @@ app.get(
     const params = [];
     const filters = [];
     addTenantFilter(filters, params, request.user, "users");
+    addClubManagedUserFilter(filters, params, request.user, "users");
     const { rows } = await query(
       `SELECT id, username, full_name, role, club_id, active, created_at, updated_at
        FROM users
@@ -2068,6 +2112,10 @@ app.post(
     const role = normalizeCreatableRole(request.body.role, request.user);
     if (!role) {
       response.status(403).json({ error: "Bu rol icin yetkiniz yok." });
+      return;
+    }
+    if (!isSuperAdmin(request.user) && !CLUB_MANAGED_ROLES.has(role)) {
+      response.status(403).json({ error: "Bu rol kulup yoneticisi tarafindan yonetilemez." });
       return;
     }
     const password = String(request.body.password || "");
@@ -2125,6 +2173,14 @@ app.patch(
     );
     if (!beforeResult.rows[0]) {
       response.status(404).json({ error: "Kullanici bulunamadi." });
+      return;
+    }
+    if (!canManageClubUser(request.user, beforeResult.rows[0])) {
+      response.status(403).json({ error: "Bu kullanici uzerinde islem yapamazsiniz." });
+      return;
+    }
+    if (!isSuperAdmin(request.user) && !CLUB_MANAGED_ROLES.has(role)) {
+      response.status(403).json({ error: "Bu rol kulup yoneticisi tarafindan yonetilemez." });
       return;
     }
 
