@@ -2431,3 +2431,139 @@ tbody tr:hover {
     max-height: 104px;
   }
 }
+
+/* Attendance report sessions */
+.attendance-report-sessions {
+  display: grid;
+  gap: 14px;
+}
+
+.attendance-report-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.attendance-report-title h3 {
+  margin-bottom: 0;
+}
+
+.attendance-session-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+}
+
+.attendance-session-head {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(320px, 1.4fr) minmax(180px, 0.8fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 96px;
+  padding: 18px 20px;
+  border-radius: 0;
+  background: #fff;
+  color: var(--text);
+  box-shadow: none;
+  text-align: left;
+}
+
+.attendance-session-head:hover {
+  background: var(--surface-soft);
+  color: var(--text);
+  transform: none;
+}
+
+.attendance-session-head strong {
+  display: block;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.attendance-session-head span,
+.attendance-session-head small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.attendance-session-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.attendance-session-metrics span {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.attendance-session-metrics strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.attendance-session-meta {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  text-align: right;
+}
+
+.attendance-session-detail {
+  padding: 18px 20px 20px;
+  border-top: 1px solid var(--border);
+  background: #fbfdff;
+}
+
+.attendance-detail-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attendance-detail-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.attendance-detail-row select {
+  min-width: 150px;
+}
+
+@media (max-width: 980px) {
+  .attendance-session-head {
+    grid-template-columns: 1fr;
+  }
+
+  .attendance-session-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .attendance-session-meta {
+    justify-items: start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .attendance-session-metrics,
+  .attendance-detail-row {
+    grid-template-columns: 1fr;
+  }
+}

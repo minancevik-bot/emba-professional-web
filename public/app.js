@@ -8,6 +8,9 @@
     lessonAttendance: [],
     attendanceSlots: [],
     attendanceReport: [],
+    attendanceReportSessions: [],
+    attendanceReportDetails: {},
+    editingReportSessionId: null,
     clubs: [],
     users: [],
     selectedClub: null,
@@ -121,12 +124,14 @@
     attendanceCards: $("#attendanceCards"),
     attendanceTable: $("#attendanceTable"),
     attendanceReportForm: $("#attendanceReportForm"),
-    reportDateFrom: $("#reportDateFrom"),
-    reportDateTo: $("#reportDateTo"),
+    reportDate: $("#reportDate"),
     reportTime: $("#reportTime"),
+    reportCoach: $("#reportCoach"),
     reportStatus: $("#reportStatus"),
+    reportClub: $("#reportClub"),
+    reportClubFilterWrap: $("#reportClubFilterWrap"),
     attendanceReportSummary: $("#attendanceReportSummary"),
-    attendanceReportTable: $("#attendanceReportTable"),
+    attendanceReportSessions: $("#attendanceReportSessions"),
     paymentMonthFilter: $("#paymentMonthFilter"),
     paymentSearch: $("#paymentSearch"),
     paymentSearchButton: $("#paymentSearchButton"),
@@ -209,6 +214,25 @@
     const minute = Number(match[2]);
     if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || ![0, 30].includes(minute)) return "";
     return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+
+  function addMinutesToTime(value, minutes) {
+    const time = normalizeTimeValue(value);
+    if (!time) return "";
+    const [hour, minute] = time.split(":").map(Number);
+    const total = hour * 60 + minute + minutes;
+    return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  }
+
+  function timeRangeLabel(value) {
+    const time = normalizeTimeValue(value);
+    return time ? `${time} - ${addMinutesToTime(time, 60)}` : "-";
+  }
+
+  function dateInputValue(value) {
+    if (!value) return new Date().toISOString().slice(0, 10);
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    return String(value).slice(0, 10);
   }
 
   function normalizeLessonDay(value) {
@@ -1333,39 +1357,187 @@
 
   async function loadAttendanceReport() {
     if (!can("attendance:read")) return;
-    if (isSuperAdmin() && !state.selectedClub) {
-      switchView("superAdminView");
-      return;
-    }
     const todayValue = new Date().toISOString().slice(0, 10);
-    els.reportDateFrom.value = els.reportDateFrom.value || todayValue;
-    els.reportDateTo.value = els.reportDateTo.value || els.reportDateFrom.value;
+    els.reportDate.value = els.reportDate.value || todayValue;
+    if (isSuperAdmin() && !state.clubs.length) await loadClubs();
+    populateReportStaticFilters();
     const params = new URLSearchParams({
-      dateFrom: els.reportDateFrom.value,
-      dateTo: els.reportDateTo.value,
+      date: els.reportDate.value,
       status: els.reportStatus.value || "all"
     });
-    if (els.reportTime.value.trim()) params.set("time", els.reportTime.value.trim());
-    const data = await api(`/api/attendance/report?${params}`);
-    state.attendanceReport = data.attendance || [];
-    const summary = data.summary || {};
+    if (normalizeTimeValue(els.reportTime.value)) params.set("time", normalizeTimeValue(els.reportTime.value));
+    if (els.reportCoach.value) params.set("coachId", els.reportCoach.value);
+    if (isSuperAdmin() && els.reportClub.value) params.set("clubId", els.reportClub.value);
+    try {
+      const data = await api(`/api/reports/attendance-days?${params}`);
+      state.attendanceReportSessions = data.sessions || [];
+      state.attendanceReport = [];
+      populateReportDynamicFilters(data);
+      renderAttendanceReportSessions(data);
+    } catch (error) {
+      state.attendanceReportSessions = [];
+      state.attendanceReportDetails = {};
+      els.attendanceReportSummary.innerHTML = "";
+      els.attendanceReportSessions.innerHTML = emptyState("Raporlar yüklenirken hata oluştu.", "Sayfada kalıp filtreleri değiştirerek tekrar deneyebilirsiniz.");
+      setNotice("Raporlar yüklenirken hata oluştu.", true);
+    }
+  }
+
+  function populateReportStaticFilters() {
+    if (els.reportTime && els.reportTime.options.length <= 1) {
+      const current = els.reportTime.value || "";
+      els.reportTime.innerHTML = `<option value="">Tüm saatler</option>${lessonTimes.map((time) => `<option value="${time}">${time}</option>`).join("")}`;
+      els.reportTime.value = current;
+    }
+    if (els.reportClubFilterWrap) {
+      els.reportClubFilterWrap.classList.toggle("hidden", !isSuperAdmin());
+    }
+    if (isSuperAdmin() && els.reportClub) {
+      const current = els.reportClub.value || (state.selectedClub?.id ? String(state.selectedClub.id) : "");
+      els.reportClub.innerHTML = `<option value="">Tüm kulüpler</option>${state.clubs.map((club) => `<option value="${club.id}">${escapeHtml(club.name)}</option>`).join("")}`;
+      els.reportClub.value = Array.from(els.reportClub.options).some((option) => option.value === current) ? current : "";
+    }
+  }
+
+  function populateReportDynamicFilters(data) {
+    if (!els.reportCoach) return;
+    const current = els.reportCoach.value || "";
+    const coaches = data.coaches || [];
+    els.reportCoach.innerHTML = `<option value="">Tüm antrenörler</option>${coaches.map((coach) => (
+      coach.id ? `<option value="${coach.id}">${escapeHtml(coach.name)}</option>` : ""
+    )).join("")}`;
+    els.reportCoach.value = Array.from(els.reportCoach.options).some((option) => option.value === current) ? current : "";
+  }
+
+  function renderAttendanceReportSessions(data = {}) {
+    const sessions = state.attendanceReportSessions || [];
+    const total = sessions.reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const present = sessions.reduce((sum, item) => sum + Number(item.present || 0), 0);
+    const absent = sessions.reduce((sum, item) => sum + Number(item.absent || 0), 0);
+    const excused = sessions.reduce((sum, item) => sum + Number(item.excused || 0), 0);
     els.attendanceReportSummary.innerHTML = [
-      metricCard("Toplam", summary.total || 0, "navy", "Yoklama kaydı"),
-      metricCard("Geldi", summary.present || 0, "green", "Katılım"),
-      metricCard("Gelmedi", summary.absent || 0, "red", "Devamsızlık"),
-      metricCard("Devam Oranı", `${summary.attendanceRate || 0}%`, "gold", "Geldi / toplam")
+      metricCard("Toplam", total, "navy", "Öğrenci"),
+      metricCard("Geldi", present, "green", "Katılım"),
+      metricCard("Gelmedi", absent, "red", "Devamsızlık"),
+      metricCard("Mazeretli", excused, "gold", "Mazeret")
     ].join("");
-    els.attendanceReportTable.innerHTML = state.attendanceReport.length
-      ? state.attendanceReport.map((item) => `
-          <tr>
-            <td data-label="Tarih">${dateLabel(item.lessonDate)}</td>
-            <td data-label="Saat">${escapeHtml(item.startTime || "-")}</td>
-            <td data-label="Öğrenci"><strong>${escapeHtml(item.studentName)}</strong></td>
-            <td data-label="Durum">${statusBadge(item.status)}</td>
-            <td data-label="Yoklamayı Alan">${escapeHtml(item.recordedByName || "-")}</td>
-          </tr>
-        `).join("")
-      : emptyRow(5, "Rapor kaydı bulunamadı.", "Filtreleri değiştirerek tekrar deneyebilirsiniz.");
+    const reportDate = els.reportDate.value || data.date || new Date().toISOString().slice(0, 10);
+    const title = `${dateLabel(reportDate)} ${data.dayOfWeek || todayName()} Yoklamaları`;
+    els.attendanceReportSessions.innerHTML = `
+      <div class="attendance-report-title">
+        <h3>${escapeHtml(title)}</h3>
+        ${data.cancellationMigrationRequired ? `<span class="soft-pill">İptal için migration gerekli</span>` : ""}
+      </div>
+      ${sessions.length ? sessions.map(renderAttendanceReportSession).join("") : emptyState("Bu gün için saat bazlı yoklama bulunamadı.", "Tarih veya filtreleri değiştirerek tekrar deneyin.")}
+    `;
+  }
+
+  function renderAttendanceReportSession(session) {
+    const detail = state.attendanceReportDetails[session.id];
+    const isEditing = state.editingReportSessionId === session.id;
+    const detailHtml = detail ? renderAttendanceReportDetail(session, detail, isEditing) : "";
+    return `
+      <article class="attendance-session-card">
+        <button class="attendance-session-head" data-action="toggle-report-session" data-session-id="${escapeHtml(session.id)}" type="button">
+          <div>
+            <strong>${escapeHtml(timeRangeLabel(session.startTime))}</strong>
+            <span>${escapeHtml(session.clubName || currentClubName() || "KulüpAsist Merkez")}</span>
+          </div>
+          <div class="attendance-session-metrics">
+            <span>Toplam <strong>${Number(session.total || 0)}</strong></span>
+            <span>Geldi <strong>${Number(session.present || 0)}</strong></span>
+            <span>Gelmedi <strong>${Number(session.absent || 0)}</strong></span>
+            <span>Mazeretli <strong>${Number(session.excused || 0)}</strong></span>
+          </div>
+          <div class="attendance-session-meta">
+            <span>${escapeHtml(session.recordedByName || "Yoklamayı alan yok")}</span>
+            <small>${escapeHtml(dateLabel(session.recordedAt) || "-")}</small>
+          </div>
+        </button>
+        ${detailHtml}
+      </article>
+    `;
+  }
+
+  function renderAttendanceReportDetail(session, detail, isEditing) {
+    const rows = detail.records || [];
+    const actions = detail.canEdit
+      ? `<button class="small-button secondary" data-action="${isEditing ? "cancel-report-edit" : "edit-report-session"}" data-session-id="${escapeHtml(session.id)}" type="button">${isEditing ? "Vazgeç" : "Düzenle"}</button>
+         ${isEditing ? `<button class="small-button" data-action="save-report-session" data-session-id="${escapeHtml(session.id)}" type="button">Değişiklikleri Kaydet</button>` : ""}`
+      : `<span class="soft-pill">Düzenleme yetkiniz yok</span>`;
+    const cancelInfo = detail.cancellationMigrationRequired
+      ? `<span class="soft-pill">Yoklamayı İptal Et: migration gerekli</span>`
+      : `<button class="small-button danger" data-action="cancel-attendance-session" data-session-id="${escapeHtml(session.id)}" type="button">Yoklamayı İptal Et</button>`;
+    return `
+      <div class="attendance-session-detail">
+        <div class="panel-head">
+          <div>
+            <h3>${escapeHtml(timeRangeLabel(session.startTime))} Detay</h3>
+            <p>${rows.length} öğrenci listeleniyor</p>
+          </div>
+          <div class="actions">${actions}${cancelInfo}</div>
+        </div>
+        <div class="attendance-detail-list">
+          ${rows.length ? rows.map((item) => `
+            <div class="attendance-detail-row">
+              <strong>${escapeHtml(item.studentName || "-")}</strong>
+              ${isEditing ? `
+                <select data-report-record="${item.id}">
+                  <option value="present" ${item.status === "present" ? "selected" : ""}>Geldi</option>
+                  <option value="absent" ${item.status === "absent" ? "selected" : ""}>Gelmedi</option>
+                  <option value="excused" ${item.status === "excused" ? "selected" : ""}>Mazeretli</option>
+                </select>
+              ` : statusBadge(item.status)}
+            </div>
+          `).join("") : emptyState("Detay kaydı bulunamadı.", "Bu saat için rapor detayı yok.")}
+        </div>
+      </div>
+    `;
+  }
+
+  async function toggleAttendanceReportSession(sessionId) {
+    const session = state.attendanceReportSessions.find((item) => item.id === sessionId);
+    if (!session) return;
+    if (state.attendanceReportDetails[sessionId]) {
+      delete state.attendanceReportDetails[sessionId];
+      if (state.editingReportSessionId === sessionId) state.editingReportSessionId = null;
+      renderAttendanceReportSessions();
+      return;
+    }
+    await loadAttendanceReportDetail(session);
+  }
+
+  async function loadAttendanceReportDetail(session) {
+    const params = new URLSearchParams({
+      date: dateInputValue(session.lessonDate || els.reportDate.value),
+      time: normalizeTimeValue(session.startTime),
+      status: els.reportStatus.value || "all"
+    });
+    if (els.reportCoach.value) params.set("coachId", els.reportCoach.value);
+    if (isSuperAdmin() && session.clubId) params.set("clubId", session.clubId);
+    try {
+      const data = await api(`/api/reports/attendance-detail?${params}`);
+      state.attendanceReportDetails[session.id] = data;
+      renderAttendanceReportSessions();
+    } catch (error) {
+      setNotice("Raporlar yüklenirken hata oluştu.", true);
+    }
+  }
+
+  async function saveAttendanceReportSession(sessionId) {
+    const detail = state.attendanceReportDetails[sessionId];
+    if (!detail) return;
+    const controls = $$(`[data-report-record]`);
+    await Promise.all(controls.map((control) => api(`/api/reports/attendance-records/${control.dataset.reportRecord}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: control.value })
+    })));
+    state.editingReportSessionId = null;
+    delete state.attendanceReportDetails[sessionId];
+    await loadAttendanceReport();
+    const session = state.attendanceReportSessions.find((item) => item.id === sessionId);
+    if (session) await loadAttendanceReportDetail(session);
+    setNotice("Yoklama raporu güncellendi.");
   }
 
   function buildPaymentRows() {
@@ -1932,6 +2104,19 @@
       }
       if (action === "go-student-create") switchView("studentCreateView");
       if (action === "go-attendance") switchView("attendanceView");
+      if (action === "toggle-report-session") await toggleAttendanceReportSession(button.dataset.sessionId);
+      if (action === "edit-report-session") {
+        state.editingReportSessionId = button.dataset.sessionId;
+        renderAttendanceReportSessions();
+      }
+      if (action === "cancel-report-edit") {
+        state.editingReportSessionId = null;
+        renderAttendanceReportSessions();
+      }
+      if (action === "save-report-session") await saveAttendanceReportSession(button.dataset.sessionId);
+      if (action === "cancel-attendance-session") {
+        setNotice("Yoklama iptali için migration gereklidir; hard delete yapılmadı.", true);
+      }
       if (action === "edit-user") startUserEdit(state.users.find((user) => String(user.id) === String(id)));
       if (action === "toggle-user-active") {
         const user = state.users.find((item) => String(item.id) === String(id));

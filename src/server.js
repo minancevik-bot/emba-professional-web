@@ -166,6 +166,22 @@ function addAttendanceAccessFilter(filters, params, user, attendanceAlias = "a")
   filters.push(`${attendanceAlias}.recorded_by = $${params.length}`);
 }
 
+function addReportAttendanceAccessFilter(filters, params, request, attendanceAlias = "a") {
+  if (isSuperAdmin(request.user)) {
+    const clubId = Number(request.query.clubId || 0);
+    if (Number.isInteger(clubId) && clubId > 0) {
+      params.push(clubId);
+      filters.push(`${attendanceAlias}.club_id = $${params.length}`);
+    }
+    return;
+  }
+  addAttendanceAccessFilter(filters, params, request.user, attendanceAlias);
+}
+
+function validAttendanceEditStatus(status) {
+  return ["present", "absent", "excused"].includes(status) ? status : null;
+}
+
 function whereClause(filters) {
   return filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 }
@@ -374,6 +390,12 @@ function lessonTimeSql(alias) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function dateOnly(value) {
+  if (!value) return today();
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
 }
 
 function dayNameForDate(value) {
@@ -1847,6 +1869,201 @@ app.post(
     });
     response.status(201).json({ ok: true, ...result });
   })
+);
+
+app.get(
+  "/api/reports/attendance-days",
+  requireAuth,
+  requirePermission("attendance:read"),
+  asyncHandler(async (request, response) => {
+    const lessonDate = request.query.date || today();
+    const params = [lessonDate];
+    const filters = ["a.lesson_date = $1"];
+    const startTime = normalizeLessonTime(request.query.time);
+    const status = nullableText(request.query.status);
+    const coachId = Number(request.query.coachId || 0);
+    if (startTime) {
+      params.push(startTime);
+      filters.push(`${lessonTimeSql("a")} = $${params.length}`);
+    }
+    if (status && status !== "all") {
+      params.push(status);
+      filters.push(`a.status = $${params.length}`);
+    }
+    if (!isCoach(request.user) && Number.isInteger(coachId) && coachId > 0) {
+      params.push(coachId);
+      filters.push(`a.recorded_by = $${params.length}`);
+    }
+    addReportAttendanceAccessFilter(filters, params, request, "a");
+    const slotExpression = lessonTimeSql("a");
+    const { rows } = await query(
+      `SELECT
+         a.lesson_date,
+         MIN(a.day_of_week) AS day_of_week,
+         ${slotExpression} AS start_time,
+         a.club_id,
+         c.name AS club_name,
+         COUNT(*)::int AS total_count,
+         COUNT(*) FILTER (WHERE a.status = 'present')::int AS present_count,
+         COUNT(*) FILTER (WHERE a.status = 'absent')::int AS absent_count,
+         COUNT(*) FILTER (WHERE a.status = 'excused')::int AS excused_count,
+         COUNT(*) FILTER (WHERE a.status NOT IN ('present', 'absent', 'excused'))::int AS other_count,
+         string_agg(DISTINCT COALESCE(u.full_name, 'Sistem'), ', ') AS recorded_by_names,
+         MAX(a.created_at) AS recorded_at,
+         MAX(a.updated_at) AS updated_at
+       FROM attendance_records a
+       JOIN students s ON s.id = a.student_id
+       LEFT JOIN clubs c ON c.id = a.club_id
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}
+       GROUP BY a.lesson_date, ${slotExpression}, a.club_id, c.name
+       ORDER BY ${slotExpression} ASC`,
+      params
+    );
+    const coachResult = await query(
+      `SELECT DISTINCT a.recorded_by AS coach_id, COALESCE(u.full_name, 'Sistem') AS coach_name
+       FROM attendance_records a
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}
+       ORDER BY coach_name ASC`,
+      params
+    );
+    const canEditRecords = can(request.user, "attendance:write");
+    const isToday = String(lessonDate) === today();
+    response.json({
+      date: lessonDate,
+      dayOfWeek: dayNameForDate(lessonDate),
+      supportsCancellation: false,
+      cancellationMigrationRequired: true,
+      coaches: coachResult.rows.map((row) => ({
+        id: row.coach_id,
+        name: row.coach_name
+      })),
+      sessions: rows.map((row) => ({
+        id: `${dateOnly(row.lesson_date)}_${row.start_time}_${row.club_id || "center"}`,
+        lessonDate: row.lesson_date,
+        dayOfWeek: row.day_of_week || dayNameForDate(row.lesson_date),
+        startTime: row.start_time,
+        clubId: row.club_id,
+        clubName: row.club_name,
+        total: Number(row.total_count || 0),
+        present: Number(row.present_count || 0),
+        absent: Number(row.absent_count || 0),
+        excused: Number(row.excused_count || 0),
+        other: Number(row.other_count || 0),
+        recordedByName: row.recorded_by_names,
+        recordedAt: row.recorded_at,
+        updatedAt: row.updated_at,
+        canEdit: canEditRecords && (!isCoach(request.user) || isToday),
+        canCancel: false,
+        cancellationMigrationRequired: true
+      }))
+    });
+  })
+);
+
+app.get(
+  "/api/reports/attendance-detail",
+  requireAuth,
+  requirePermission("attendance:read"),
+  asyncHandler(async (request, response) => {
+    const lessonDate = request.query.date || today();
+    const startTime = normalizeLessonTime(request.query.time);
+    if (!startTime) {
+      response.status(400).json({ error: "Rapor detayi icin saat secilmelidir." });
+      return;
+    }
+    const params = [lessonDate, startTime];
+    const filters = ["a.lesson_date = $1", `${lessonTimeSql("a")} = $2`];
+    const status = nullableText(request.query.status);
+    const coachId = Number(request.query.coachId || 0);
+    if (status && status !== "all") {
+      params.push(status);
+      filters.push(`a.status = $${params.length}`);
+    }
+    if (!isCoach(request.user) && Number.isInteger(coachId) && coachId > 0) {
+      params.push(coachId);
+      filters.push(`a.recorded_by = $${params.length}`);
+    }
+    addReportAttendanceAccessFilter(filters, params, request, "a");
+    const { rows } = await query(
+      `SELECT a.*, s.full_name AS student_name, c.name AS club_name, u.full_name AS recorded_by_name
+       FROM attendance_records a
+       JOIN students s ON s.id = a.student_id
+       LEFT JOIN clubs c ON c.id = a.club_id
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}
+       ORDER BY lower(s.full_name) ASC`,
+      params
+    );
+    const isToday = String(lessonDate) === today();
+    response.json({
+      date: lessonDate,
+      time: startTime,
+      canEdit: can(request.user, "attendance:write") && (!isCoach(request.user) || isToday),
+      canCancel: false,
+      cancellationMigrationRequired: true,
+      records: rows.map((row) => ({
+        ...mapAttendance(row),
+        clubName: row.club_name
+      }))
+    });
+  })
+);
+
+app.patch(
+  "/api/reports/attendance-records/:id",
+  requireAuth,
+  requirePermission("attendance:write"),
+  asyncHandler(async (request, response) => {
+    const status = validAttendanceEditStatus(request.body.status);
+    if (!status) {
+      response.status(400).json({ error: "Gecerli yoklama durumu secilmelidir." });
+      return;
+    }
+    const params = [request.params.id];
+    const filters = ["a.id = $1"];
+    addReportAttendanceAccessFilter(filters, params, request, "a");
+    const before = await query(
+      `SELECT a.*, s.full_name AS student_name, u.full_name AS recorded_by_name
+       FROM attendance_records a
+       JOIN students s ON s.id = a.student_id
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}`,
+      params
+    );
+    if (!before.rows[0]) {
+      response.status(404).json({ error: "Yoklama kaydi bulunamadi." });
+      return;
+    }
+    if (isCoach(request.user) && dateOnly(before.rows[0].lesson_date) !== today()) {
+      response.status(403).json({ error: "Coach gecmis gun yoklamasini duzenleyemez." });
+      return;
+    }
+    const updated = await transaction(async (client) => {
+      const result = await client.query(
+        `UPDATE attendance_records
+         SET status = $1, updated_at = now()
+         WHERE id = $2
+         RETURNING *`,
+        [status, request.params.id]
+      );
+      await audit(client, request, "update", "attendance", request.params.id, before.rows[0], result.rows[0]);
+      return result.rows[0];
+    });
+    response.json({ attendance: mapAttendance({ ...updated, student_name: before.rows[0].student_name, recorded_by_name: before.rows[0].recorded_by_name }) });
+  })
+);
+
+app.patch(
+  "/api/reports/attendance-session/:id/cancel",
+  requireAuth,
+  requirePermission("attendance:write"),
+  (_request, response) => {
+    response.status(501).json({
+      error: "Yoklama iptali icin cancelled_at, cancelled_by ve cancellation_reason kolonlarini ekleyen migration gereklidir."
+    });
+  }
 );
 
 app.get(

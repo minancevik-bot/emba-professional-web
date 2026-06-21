@@ -392,29 +392,26 @@
             <div class="panel-head">
             <div>
               <h2>Yoklama Raporu</h2>
-              <p>Tarih, saat ve durum filtreleriyle devam/devamsızlık kayıtlarını inceleyin.</p>
+              <p>Seçilen güne ait yoklamaları saat başlıkları halinde inceleyin ve yetkinize göre düzenleyin.</p>
             </div>
             </div>
             <form id="attendanceReportForm" class="inline-form">
-              <label>Başlangıç<input id="reportDateFrom" type="date"></label>
-              <label>Bitiş<input id="reportDateTo" type="date"></label>
-              <label>Saat<input id="reportTime" placeholder="10:00"></label>
+              <label>Tarih<input id="reportDate" type="date"></label>
+              <label>Saat<select id="reportTime"><option value="">Tüm saatler</option></select></label>
+              <label>Antrenör<select id="reportCoach"><option value="">Tüm antrenörler</option></select></label>
               <label>Durum
                 <select id="reportStatus">
                   <option value="all">Tümü</option>
                   <option value="present">Geldi</option>
                   <option value="absent">Gelmedi</option>
+                  <option value="excused">Mazeretli</option>
                 </select>
               </label>
+              <label id="reportClubFilterWrap" class="hidden">Kulüp<select id="reportClub"><option value="">Tüm kulüpler</option></select></label>
               <button type="submit">Raporu Getir</button>
             </form>
             <div id="attendanceReportSummary" class="metric-grid compact-metrics"></div>
-            <div class="table-card nested-table">
-              <table class="responsive-table">
-                <thead><tr><th>Tarih</th><th>Saat</th><th>Öğrenci</th><th>Durum</th><th>Yoklamayı Alan</th></tr></thead>
-                <tbody id="attendanceReportTable"></tbody>
-              </table>
-            </div>
+            <div id="attendanceReportSessions" class="attendance-report-sessions"></div>
           </section>
         </section>
 
