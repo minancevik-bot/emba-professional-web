@@ -12,8 +12,8 @@ const ROLE_ALIASES = {
 };
 
 const ROLE_LABELS = {
-  super_admin: "Super Admin",
-  manager: "Manager",
+  super_admin: "Otomasyon Sorumlusu",
+  manager: "Kulup Yetkilisi",
   coordinator: "Koordinator",
   coach: "Antrenor",
   assistant: "Asistan",
@@ -77,6 +77,7 @@ const ROLE_PERMISSIONS = {
 };
 
 const USER_CREATABLE_ROLES = [
+  "super_admin",
   "admin",
   "koordinator",
   "antrenor",
@@ -89,6 +90,7 @@ const USER_CREATABLE_ROLES = [
 ];
 
 const DATABASE_ROLE_ALIASES = {
+  super_admin: "super_admin",
   manager: "manager",
   coordinator: "coordinator",
   coach: "coach",
@@ -137,10 +139,19 @@ function isCoach(user) {
 function normalizeCreatableRole(role, actor) {
   const requested = String(role || "").trim();
   if (requested === "super_admin") {
-    return null;
+    return actor && isSuperAdmin(actor) ? "super_admin" : null;
   }
   if (!USER_CREATABLE_ROLES.includes(requested)) return "viewer";
-  return DATABASE_ROLE_ALIASES[requested] || "viewer";
+  const normalized = DATABASE_ROLE_ALIASES[requested] || "viewer";
+  if (actor && !isSuperAdmin(actor)) {
+    if (normalizeUserRole(actor) === "manager") {
+      return ["manager", "coach", "assistant"].includes(normalized) ? normalized : null;
+    }
+    if (!["coach", "assistant", "viewer"].includes(normalized)) {
+      return null;
+    }
+  }
+  return normalized;
 }
 
 module.exports = {

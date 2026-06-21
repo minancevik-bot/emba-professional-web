@@ -6,7 +6,15 @@
     <title>KulüpAsist Merkez</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
-  <body>
+  <body class="auth-loading">
+    <section id="loadingView" class="loading-view" aria-live="polite">
+      <div class="loading-card">
+        <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+        <strong class="text-logo-fallback" hidden>KulüpAsist</strong>
+        <span>Yükleniyor...</span>
+      </div>
+    </section>
+
     <section id="loginView" class="login-view">
       <div class="login-shell">
         <div class="login-brand-panel">
@@ -36,19 +44,22 @@
           <span id="loginMessage" class="form-message" aria-live="polite"></span>
         </form>
       </div>
+      <footer class="app-footer login-footer">KulüpAsist © 2026 · İnan Çevik</footer>
     </section>
 
     <div id="appShell" class="app-shell hidden">
       <div id="sidebarOverlay" class="sidebar-overlay" hidden></div>
       <header class="mobile-header">
         <button id="mobileMenuButton" class="icon-button" type="button" aria-label="Menüyü aç">☰</button>
-        <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
-        <span class="fallback-logo small" hidden>KA</span>
+        <button id="mobileBrandHomeButton" class="brand-home mobile-brand-home" type="button" aria-label="Ana sayfa">
+          <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+          <span class="fallback-logo small" hidden>KA</span>
+        </button>
         <strong>KulüpAsist</strong>
       </header>
 
       <aside id="sidebar" class="sidebar">
-        <div class="brand">
+        <button id="brandHomeButton" class="brand brand-home" type="button">
           <div class="app-logo">
             <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
             <span class="fallback-logo" hidden>KA</span>
@@ -57,14 +68,12 @@
             <strong>KulüpAsist</strong>
             <span>Üst yönetim ve kulüp paneli</span>
           </div>
-        </div>
+        </button>
         <nav aria-label="Ana menü">
-          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Üst Yönetim</span></button>
+          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Otomasyon Yönetimi</span></button>
           <button class="nav-button" data-view="dashboardView" data-permission="dashboard:read"><span>Panel</span></button>
           <button class="nav-button" data-view="studentsView" data-permission="students:read"><span>Öğrenciler</span></button>
-          <button class="nav-button" data-view="studentCreateView" data-permission="students:write" data-coach-only="true"><span>Öğrenci Ekle</span></button>
           <button class="nav-button" data-view="attendanceView" data-permission="attendance:read"><span>Yoklama</span></button>
-          <button class="nav-button" data-view="attendanceReportView" data-permission="attendance:read"><span>Yoklama Raporu</span></button>
           <button class="nav-button" data-view="paymentsView" data-permission="payments:read"><span>Ödemeler</span></button>
           <button class="nav-button" data-view="importView" data-permission="students:import"><span>Toplu İçe Aktar</span></button>
           <button class="nav-button" data-view="usersView" data-permission="users:read"><span>Kullanıcılar</span></button>
@@ -88,8 +97,18 @@
           <div class="topbar-actions">
             <button id="backToClubsButton" class="secondary hidden" type="button">KulüpAsist Merkez'e Dön</button>
             <span id="clubContextLabel" class="user-badge hidden"></span>
-            <input id="globalSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
-            <span id="userBadge" class="user-badge"></span>
+            <div id="topClubLogo" class="top-club-logo hidden">
+              <img id="topClubLogoImage" alt="Kulüp logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+              <span id="topClubLogoFallback" class="fallback-logo small" hidden>KA</span>
+            </div>
+            <div class="user-area">
+              <span id="userBadge" class="user-badge"></span>
+              <div class="search-box">
+                <input id="globalSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
+                <button id="globalSearchButton" class="secondary" type="button">Ara</button>
+                <button id="globalSearchClearButton" class="secondary" type="button">Temizle</button>
+              </div>
+            </div>
             <button id="logoutButton" class="secondary" type="button">Çıkış</button>
           </div>
         </header>
@@ -158,14 +177,11 @@
                   <label>Yönetici ad soyad<input id="clubAdminFullName" autocomplete="name"></label>
                   <label>Yönetici rolü
                     <select id="clubAdminRole">
-                      <option value="manager">Manager</option>
-                      <option value="coordinator">Coordinator</option>
-                      <option value="coach">Coach</option>
-                      <option value="assistant">Assistant</option>
-                      <option value="viewer">Viewer</option>
+                      <option value="manager">Kulüp Yöneticisi</option>
                     </select>
                   </label>
                   <label>Geçici şifre<input id="clubAdminPassword" type="password" autocomplete="new-password" minlength="8"></label>
+                  <label>Geçici şifre tekrar<input id="clubAdminPasswordConfirm" type="password" autocomplete="new-password" minlength="8"></label>
                 </div>
                 <button type="submit" data-requires="users:write">Kulüp Ekle</button>
               </form>
@@ -235,7 +251,7 @@
             <div class="filter-row">
               <select id="studentStatusFilter">
                 <option value="all">Tüm durumlar</option>
-                <option>Aktif</option>
+                <option selected>Aktif</option>
                 <option>Bekleyen</option>
                 <option>Pasif</option>
               </select>
@@ -273,14 +289,14 @@
               <div class="form-section">
                 <h3>C. Ders Bilgileri</h3>
                 <div class="lesson-grid">
-                  <label>1. Gün<input id="lessonDay1" placeholder="Salı"></label>
-                  <label>1. Saat<input id="lessonTime1" placeholder="17:30"></label>
-                  <label>2. Gün<input id="lessonDay2" placeholder="Pazar"></label>
-                  <label>2. Saat<input id="lessonTime2" placeholder="10:00"></label>
-                  <label>3. Gün<input id="lessonDay3"></label>
-                  <label>3. Saat<input id="lessonTime3"></label>
-                  <label>4. Gün<input id="lessonDay4"></label>
-                  <label>4. Saat<input id="lessonTime4"></label>
+                  <label>1. Gün<select id="lessonDay1"></select></label>
+                  <label>1. Saat<select id="lessonTime1"></select></label>
+                  <label>2. Gün<select id="lessonDay2"></select></label>
+                  <label>2. Saat<select id="lessonTime2"></select></label>
+                  <label>3. Gün<select id="lessonDay3"></select></label>
+                  <label>3. Saat<select id="lessonTime3"></select></label>
+                  <label>4. Gün<select id="lessonDay4"></select></label>
+                  <label>4. Saat<select id="lessonTime4"></select></label>
                 </div>
               </div>
 
@@ -332,7 +348,19 @@
             </div>
             <div class="filter-row">
               <input id="attendanceDate" type="date">
-              <select id="attendanceSlotTime"></select>
+              <select id="attendanceSlotTime" class="time-source-select"></select>
+              <div id="attendanceTimePicker" class="time-picker">
+                <button id="attendanceTimeToggle" class="time-picker-toggle secondary" data-action="toggle-attendance-times" type="button" aria-expanded="false">
+                  <span>
+                    <strong id="attendanceSelectedTime">Saat seçiniz</strong>
+                    <small id="attendanceTimeSummary">Tarih seçildikten sonra ders saatleri listelenir</small>
+                  </span>
+                  <span class="time-picker-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div id="attendanceTimePanel" class="time-picker-panel hidden">
+                  <div id="attendanceTimeGrid" class="time-chip-grid" aria-label="Ders saatleri"></div>
+                </div>
+              </div>
             </div>
           </div>
           <section class="panel">
@@ -360,16 +388,13 @@
               <tbody id="attendanceTable"></tbody>
             </table>
           </div>
-        </section>
-
-        <section id="attendanceReportView" class="view">
-          <div class="section-head">
+          <section class="panel attendance-report-panel">
+            <div class="panel-head">
             <div>
               <h2>Yoklama Raporu</h2>
               <p>Tarih, saat ve durum filtreleriyle devam/devamsızlık kayıtlarını inceleyin.</p>
             </div>
-          </div>
-          <section class="panel">
+            </div>
             <form id="attendanceReportForm" class="inline-form">
               <label>Başlangıç<input id="reportDateFrom" type="date"></label>
               <label>Bitiş<input id="reportDateTo" type="date"></label>
@@ -383,14 +408,14 @@
               </label>
               <button type="submit">Raporu Getir</button>
             </form>
+            <div id="attendanceReportSummary" class="metric-grid compact-metrics"></div>
+            <div class="table-card nested-table">
+              <table class="responsive-table">
+                <thead><tr><th>Tarih</th><th>Saat</th><th>Öğrenci</th><th>Durum</th><th>Yoklamayı Alan</th></tr></thead>
+                <tbody id="attendanceReportTable"></tbody>
+              </table>
+            </div>
           </section>
-          <div id="attendanceReportSummary" class="metric-grid compact-metrics"></div>
-          <div class="table-card">
-            <table class="responsive-table">
-              <thead><tr><th>Tarih</th><th>Saat</th><th>Öğrenci</th><th>Durum</th><th>Yoklamayı Alan</th></tr></thead>
-              <tbody id="attendanceReportTable"></tbody>
-            </table>
-          </div>
         </section>
 
         <section id="paymentsView" class="view">
@@ -401,7 +426,11 @@
             </div>
             <div class="filter-row">
               <input id="paymentMonthFilter" type="month">
-              <input id="paymentSearch" type="search" placeholder="Öğrenci veya veli ara" autocomplete="off">
+              <div class="search-box compact-search">
+                <input id="paymentSearch" type="search" placeholder="Öğrenci veya veli ara" autocomplete="off">
+                <button id="paymentSearchButton" class="secondary" type="button">Ara</button>
+                <button id="paymentSearchClearButton" class="secondary" type="button">Temizle</button>
+              </div>
               <select id="paymentStatusFilter">
                 <option value="all">Tümü</option>
                 <option value="paid">Ödendi</option>
@@ -465,21 +494,57 @@
           <div class="section-head">
             <div>
               <h2>Kullanıcılar</h2>
-              <p>Rol ve durum bilgileri kulüp bazlı yönetilir.</p>
+              <p>Otomasyon ve kulüp kullanıcılarını role, kulübe ve duruma göre yönetin.</p>
             </div>
+            <button id="newUserButton" type="button" data-requires="users:write">Yeni Kullanıcı Ekle</button>
           </div>
+          <section class="panel user-filter-panel">
+            <div class="search-box user-search-box">
+              <input id="userSearch" type="search" placeholder="Ad soyad, kullanıcı adı, e-posta veya kulüp ara" autocomplete="off">
+              <button id="userSearchButton" type="button">Ara</button>
+              <button id="userSearchClearButton" class="secondary" type="button">Temizle</button>
+            </div>
+            <div class="filter-row">
+              <select id="userRoleFilter">
+                <option value="all">Tüm roller</option>
+                <option value="super_admin">Otomasyon Sorumlusu</option>
+                <option value="manager">Kulüp Yetkilisi</option>
+                <option value="coordinator">Koordinatör</option>
+                <option value="coach">Antrenör</option>
+                <option value="assistant">Yardımcı</option>
+                <option value="viewer">İzleyici</option>
+              </select>
+              <select id="userClubFilter">
+                <option value="all">Tüm kulüpler</option>
+                <option value="center">KulüpAsist Merkez</option>
+              </select>
+            </div>
+          </section>
           <section class="panel">
             <form id="userForm" class="inline-form">
-              <label>Kullanıcı adı<input id="newUsername" autocomplete="username" required></label>
+              <label>Kullanıcı adı / e-posta<input id="newUsername" autocomplete="username" required></label>
               <label>Ad soyad<input id="newUserFullName" autocomplete="name" required></label>
-              <label>Rol<select id="newUserRole"><option value="coordinator">Coordinator</option><option value="coach">Coach</option><option value="assistant">Assistant</option><option value="viewer">Viewer</option><option value="manager">Manager</option></select></label>
-              <label>Şifre<input id="newUserPassword" type="password" autocomplete="new-password" minlength="8" required></label>
-              <button type="submit" data-requires="users:write">Kullanıcı Ekle</button>
+              <input id="editUserId" type="hidden">
+              <label>Rol<select id="newUserRole"><option value="super_admin">Otomasyon Sorumlusu</option><option value="manager">Kulüp Yetkilisi</option><option value="coordinator">Koordinatör</option><option value="coach">Antrenör</option><option value="assistant">Yardımcı</option><option value="viewer">İzleyici</option></select></label>
+              <label>Bağlı kulüp<select id="newUserClubId"><option value="">KulüpAsist Merkez</option></select></label>
+              <div id="coachScopeHint" class="nested-fields scope-hint hidden">
+                <strong>Antrenör yetki kapsamı</strong>
+                <label class="check-row">
+                  <input type="radio" checked disabled>
+                  <span>Tüm aktif öğrenciler</span>
+                </label>
+                <p class="muted">Özel öğrenci/grup ataması için veri modeli hazırlandığında bu alan genişletilebilir.</p>
+              </div>
+              <label>Durum<select id="newUserActive"><option value="true">Aktif</option><option value="false">Pasif</option></select></label>
+              <label>Şifre<input id="newUserPassword" type="password" autocomplete="new-password" minlength="8"></label>
+              <label>Şifre tekrar<input id="newUserPasswordConfirm" type="password" autocomplete="new-password" minlength="8"></label>
+              <button id="saveUserButton" type="submit" data-requires="users:write">Kullanıcı Ekle</button>
+              <button id="cancelUserEditButton" class="secondary hidden" type="button">İptal</button>
             </form>
           </section>
           <div class="table-card">
             <table class="responsive-table">
-              <thead><tr><th>Kullanıcı adı</th><th>Ad soyad</th><th>Rol</th><th>Durum</th><th>Kulüp</th><th>Yetki özeti</th></tr></thead>
+              <thead><tr><th>Ad Soyad</th><th>Kullanıcı adı / e-posta</th><th>Rol</th><th>Bağlı Kulüp</th><th>Durum</th><th>Son işlem</th><th>İşlemler</th></tr></thead>
               <tbody id="userTable"></tbody>
             </table>
           </div>
@@ -507,6 +572,7 @@
             <div id="auditLogList" class="audit-list"></div>
           </section>
         </section>
+        <footer class="app-footer">KulüpAsist © 2026 · İnan Çevik</footer>
       </main>
     </div>
 
