@@ -1165,7 +1165,20 @@
     }
     const date = els.attendanceDate.value || new Date().toISOString().slice(0, 10);
     els.attendanceDate.value = date;
-    const slotsData = await api(`/api/attendance/slots?date=${encodeURIComponent(date)}`);
+    let slotsData;
+    try {
+      slotsData = await api(`/api/attendance/slots?date=${encodeURIComponent(date)}`);
+    } catch (error) {
+      state.attendanceSlots = [];
+      state.lessonAttendance = [];
+      els.attendanceSlotTime.innerHTML = `<option value="">Saat seçiniz</option>`;
+      els.attendanceSlotTime.value = "";
+      renderAttendanceTimeGrid();
+      els.lessonAttendanceCards.innerHTML = emptyState("Saatler yüklenirken hata oluştu.", "Lütfen tarihi kontrol edip tekrar deneyin.");
+      els.attendanceTable.innerHTML = emptyRow(6, "Saatler yüklenirken hata oluştu.", "Yoklama sayfasında kalıp tekrar deneyebilirsiniz.");
+      setNotice("Saatler yüklenirken hata oluştu.", true);
+      return;
+    }
     state.attendanceSlots = slotsData.slots || [];
     const slotCounts = new Map(state.attendanceSlots.map((slot) => [normalizeTimeValue(slot.time), Number(slot.studentCount || 0)]));
     const firstActiveSlot = state.attendanceSlots.map((slot) => normalizeTimeValue(slot.time)).find(Boolean);
@@ -1241,11 +1254,19 @@
       renderAttendanceCards();
       return;
     }
-    const data = await api(`/api/attendance/lesson-students?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`);
-    state.lessonAttendance = (data.students || []).map((student) => ({
-      ...student,
-      selectedStatus: student.attendanceStatus || null
-    }));
+    let data;
+    try {
+      data = await api(`/api/attendance/lesson-students?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`);
+      state.lessonAttendance = (data.students || []).map((student) => ({
+        ...student,
+        selectedStatus: student.attendanceStatus || null
+      }));
+    } catch (error) {
+      state.lessonAttendance = [];
+      els.lessonAttendanceCards.innerHTML = emptyState("Saatler yüklenirken hata oluştu.", "Seçili saate ait öğrenci listesi getirilemedi.");
+      setNotice("Saatler yüklenirken hata oluştu.", true);
+      return;
+    }
     if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
       console.info("Yoklama öğrenci listesi", { date, time, count: state.lessonAttendance.length });
     }

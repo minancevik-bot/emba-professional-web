@@ -1762,7 +1762,7 @@ app.get(
         AND a.start_time = ${lessonTimeSql("l")}
        LEFT JOIN users u ON u.id = a.recorded_by
        ${whereClause(filters)}
-       GROUP BY s.id, a.status, a.note, u.full_name
+       GROUP BY s.id, c.slug, a.status, a.note, u.full_name
        ORDER BY lower(s.full_name) ASC`,
       params
     );
