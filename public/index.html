@@ -44,6 +44,7 @@
           <span id="loginMessage" class="form-message" aria-live="polite"></span>
         </form>
       </div>
+      <footer class="app-footer login-footer">KulüpAsist © 2026 · İnan Çevik</footer>
     </section>
 
     <div id="appShell" class="app-shell hidden">
@@ -69,7 +70,7 @@
           </div>
         </button>
         <nav aria-label="Ana menü">
-          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Yönetim Paneli</span></button>
+          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Otomasyon Yönetimi</span></button>
           <button class="nav-button" data-view="dashboardView" data-permission="dashboard:read"><span>Panel</span></button>
           <button class="nav-button" data-view="studentsView" data-permission="students:read"><span>Öğrenciler</span></button>
           <button class="nav-button" data-view="attendanceView" data-permission="attendance:read"><span>Yoklama</span></button>
@@ -348,7 +349,18 @@
             <div class="filter-row">
               <input id="attendanceDate" type="date">
               <select id="attendanceSlotTime" class="time-source-select"></select>
-              <div id="attendanceTimeGrid" class="time-chip-grid" aria-label="Ders saatleri"></div>
+              <div id="attendanceTimePicker" class="time-picker">
+                <button id="attendanceTimeToggle" class="time-picker-toggle secondary" data-action="toggle-attendance-times" type="button" aria-expanded="false">
+                  <span>
+                    <strong id="attendanceSelectedTime">Saat seçiniz</strong>
+                    <small id="attendanceTimeSummary">Tarih seçildikten sonra ders saatleri listelenir</small>
+                  </span>
+                  <span class="time-picker-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div id="attendanceTimePanel" class="time-picker-panel hidden">
+                  <div id="attendanceTimeGrid" class="time-chip-grid" aria-label="Ders saatleri"></div>
+                </div>
+              </div>
             </div>
           </div>
           <section class="panel">
@@ -482,15 +494,39 @@
           <div class="section-head">
             <div>
               <h2>Kullanıcılar</h2>
-              <p>Rol ve durum bilgileri kulüp bazlı yönetilir.</p>
+              <p>Otomasyon ve kulüp kullanıcılarını role, kulübe ve duruma göre yönetin.</p>
             </div>
+            <button id="newUserButton" type="button" data-requires="users:write">Yeni Kullanıcı Ekle</button>
           </div>
+          <section class="panel user-filter-panel">
+            <div class="search-box user-search-box">
+              <input id="userSearch" type="search" placeholder="Ad soyad, kullanıcı adı, e-posta veya kulüp ara" autocomplete="off">
+              <button id="userSearchButton" type="button">Ara</button>
+              <button id="userSearchClearButton" class="secondary" type="button">Temizle</button>
+            </div>
+            <div class="filter-row">
+              <select id="userRoleFilter">
+                <option value="all">Tüm roller</option>
+                <option value="super_admin">Otomasyon Sorumlusu</option>
+                <option value="manager">Kulüp Yetkilisi</option>
+                <option value="coordinator">Koordinatör</option>
+                <option value="coach">Antrenör</option>
+                <option value="assistant">Yardımcı</option>
+                <option value="viewer">İzleyici</option>
+              </select>
+              <select id="userClubFilter">
+                <option value="all">Tüm kulüpler</option>
+                <option value="center">KulüpAsist Merkez</option>
+              </select>
+            </div>
+          </section>
           <section class="panel">
             <form id="userForm" class="inline-form">
-              <label>Kullanıcı adı<input id="newUsername" autocomplete="username" required></label>
+              <label>Kullanıcı adı / e-posta<input id="newUsername" autocomplete="username" required></label>
               <label>Ad soyad<input id="newUserFullName" autocomplete="name" required></label>
               <input id="editUserId" type="hidden">
-              <label>Rol<select id="newUserRole"><option value="coach">Antrenör</option><option value="assistant">Asistan</option><option value="viewer">İzleyici</option><option value="coordinator">Koordinatör</option><option value="manager">Kulüp Yetkilisi</option></select></label>
+              <label>Rol<select id="newUserRole"><option value="super_admin">Otomasyon Sorumlusu</option><option value="manager">Kulüp Yetkilisi</option><option value="coordinator">Koordinatör</option><option value="coach">Antrenör</option><option value="assistant">Yardımcı</option><option value="viewer">İzleyici</option></select></label>
+              <label>Bağlı kulüp<select id="newUserClubId"><option value="">KulüpAsist Merkez</option></select></label>
               <div id="coachScopeHint" class="nested-fields scope-hint hidden">
                 <strong>Antrenör yetki kapsamı</strong>
                 <label class="check-row">
@@ -501,13 +537,14 @@
               </div>
               <label>Durum<select id="newUserActive"><option value="true">Aktif</option><option value="false">Pasif</option></select></label>
               <label>Şifre<input id="newUserPassword" type="password" autocomplete="new-password" minlength="8"></label>
+              <label>Şifre tekrar<input id="newUserPasswordConfirm" type="password" autocomplete="new-password" minlength="8"></label>
               <button id="saveUserButton" type="submit" data-requires="users:write">Kullanıcı Ekle</button>
               <button id="cancelUserEditButton" class="secondary hidden" type="button">İptal</button>
             </form>
           </section>
           <div class="table-card">
             <table class="responsive-table">
-              <thead><tr><th>Kullanıcı adı</th><th>Ad soyad</th><th>Rol</th><th>Durum</th><th>Kulüp</th><th>Yetki özeti</th><th>İşlem</th></tr></thead>
+              <thead><tr><th>Ad Soyad</th><th>Kullanıcı adı / e-posta</th><th>Rol</th><th>Bağlı Kulüp</th><th>Durum</th><th>Son işlem</th><th>İşlemler</th></tr></thead>
               <tbody id="userTable"></tbody>
             </table>
           </div>
@@ -535,6 +572,7 @@
             <div id="auditLogList" class="audit-list"></div>
           </section>
         </section>
+        <footer class="app-footer">KulüpAsist © 2026 · İnan Çevik</footer>
       </main>
     </div>
 

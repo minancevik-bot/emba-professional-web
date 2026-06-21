@@ -77,6 +77,7 @@ const ROLE_PERMISSIONS = {
 };
 
 const USER_CREATABLE_ROLES = [
+  "super_admin",
   "admin",
   "koordinator",
   "antrenor",
@@ -89,6 +90,7 @@ const USER_CREATABLE_ROLES = [
 ];
 
 const DATABASE_ROLE_ALIASES = {
+  super_admin: "super_admin",
   manager: "manager",
   coordinator: "coordinator",
   coach: "coach",
@@ -137,7 +139,7 @@ function isCoach(user) {
 function normalizeCreatableRole(role, actor) {
   const requested = String(role || "").trim();
   if (requested === "super_admin") {
-    return null;
+    return actor && isSuperAdmin(actor) ? "super_admin" : null;
   }
   if (!USER_CREATABLE_ROLES.includes(requested)) return "viewer";
   const normalized = DATABASE_ROLE_ALIASES[requested] || "viewer";

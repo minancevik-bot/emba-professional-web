@@ -16,7 +16,9 @@
     openStudentId: null,
     activeView: "superAdminView",
     pendingAttendanceTime: null,
+    attendanceTimesOpen: false,
     searchTimer: null,
+    userSearchTimer: null,
     studentSaving: false
   };
 
@@ -43,7 +45,7 @@
     studentCreateView: ["Öğrenci Ekle", "Hızlı öğrenci kaydı oluşturun."],
     paymentsView: ["Ödemeler", "Tahsilat, kalan bakiye ve WhatsApp takibini yapın."],
     importView: ["Toplu İçe Aktar", "Excel listesini önce önizleyin, sonra onaylayarak aktarın."],
-    usersView: ["Kullanıcılar", "Rol ve durum bilgilerini kulüp bazında izleyin."],
+    usersView: ["Kullanıcılar", "Otomasyon ve kulüp kullanıcılarını tek yerden yönetin."],
     backupView: ["Raporlar", "Yedekler ve işlem kayıtlarını kontrol edin."]
   };
 
@@ -104,6 +106,11 @@
     cancelStudentButton: $("#cancelStudentButton"),
     attendanceDate: $("#attendanceDate"),
     attendanceSlotTime: $("#attendanceSlotTime"),
+    attendanceTimePicker: $("#attendanceTimePicker"),
+    attendanceTimeToggle: $("#attendanceTimeToggle"),
+    attendanceSelectedTime: $("#attendanceSelectedTime"),
+    attendanceTimeSummary: $("#attendanceTimeSummary"),
+    attendanceTimePanel: $("#attendanceTimePanel"),
     attendanceTimeGrid: $("#attendanceTimeGrid"),
     attendanceCardSearch: $("#attendanceCardSearch"),
     attendanceUnmarkedCount: $("#attendanceUnmarkedCount"),
@@ -141,11 +148,19 @@
     importPreviewTable: $("#importPreviewTable"),
     userForm: $("#userForm"),
     userTable: $("#userTable"),
+    userSearch: $("#userSearch"),
+    userSearchButton: $("#userSearchButton"),
+    userSearchClearButton: $("#userSearchClearButton"),
+    userRoleFilter: $("#userRoleFilter"),
+    userClubFilter: $("#userClubFilter"),
+    newUserButton: $("#newUserButton"),
     editUserId: $("#editUserId"),
     newUserRole: $("#newUserRole"),
+    newUserClubId: $("#newUserClubId"),
     coachScopeHint: $("#coachScopeHint"),
     newUserActive: $("#newUserActive"),
     newUserPassword: $("#newUserPassword"),
+    newUserPasswordConfirm: $("#newUserPasswordConfirm"),
     saveUserButton: $("#saveUserButton"),
     cancelUserEditButton: $("#cancelUserEditButton"),
     runBackupButton: $("#runBackupButton"),
@@ -303,6 +318,23 @@
     return `<span class="role-badge role-${escapeHtml(String(role || "viewer").replace("_", "-"))}">${escapeHtml(label || role || "viewer")}</span>`;
   }
 
+  function isEmbaClubName(value) {
+    return String(value || "").toLocaleLowerCase("tr-TR").includes("emba");
+  }
+
+  function userClubName(user) {
+    return user?.clubName || (user?.clubId ? `Kulüp #${user.clubId}` : "KulüpAsist Merkez");
+  }
+
+  function userDisplayLine(user) {
+    const role = user?.roleLabel || user?.normalizedRole || user?.role || "";
+    return [user?.fullName || user?.username || "-", role, userClubName(user)].filter(Boolean).join(" | ");
+  }
+
+  function userDateLabel(user) {
+    return dateLabel(user?.updatedAt || user?.updated_at || user?.createdAt || user?.created_at);
+  }
+
   function emptyState(title, text) {
     return `
       <div class="empty-state">
@@ -335,7 +367,6 @@
       "/api/payments",
       "/api/attendance",
       "/api/import",
-      "/api/users",
       "/api/audit-logs",
       "/api/backups"
     ].some((prefix) => url.startsWith(prefix));
@@ -487,9 +518,12 @@
     const clubText = currentClubName();
     const roleText = state.user.roleLabel || state.user.role || "";
     const nameText = state.user.fullName || "";
+    const role = normalizedRole();
     const userLabel = isSuperAdmin()
       ? "Otomasyon Sorumlusu · KulüpAsist Merkez"
-      : [nameText, roleText, clubText].filter(Boolean).join(" · ");
+      : (role === "manager" && isEmbaClubName(clubText))
+        ? "MÜCAHİT ÜNAL · Kulüp Yetkilisi · EMBA Spor Kulübü"
+        : [nameText, roleText, clubText].filter(Boolean).join(" · ");
     els.userBadge.innerHTML = `<strong>${escapeHtml(userLabel || `${roleText} · ${clubText || ""}`)}</strong>`;
     state.activeView = isSuperAdmin() ? "superAdminView" : "dashboardView";
     updateRoleMenuLabels();
@@ -501,7 +535,8 @@
     const superAdminMode = isSuperAdmin();
     const clubSelected = hasSelectedClub();
     $$("[data-permission]").forEach((element) => {
-      const operationalNav = element.classList.contains("nav-button") && superAdminMode && !clubSelected;
+      const centerAllowed = element.dataset.view === "usersView";
+      const operationalNav = element.classList.contains("nav-button") && superAdminMode && !clubSelected && !centerAllowed;
       element.classList.toggle("hidden", !can(element.dataset.permission) || operationalNav);
     });
     $$("[data-super-admin-only]").forEach((element) => {
@@ -546,7 +581,8 @@
   }
 
   function switchView(viewId) {
-    if (isSuperAdmin() && !state.selectedClub && viewId !== "superAdminView") {
+    const centerAllowedView = viewId === "superAdminView" || viewId === "usersView";
+    if (isSuperAdmin() && !state.selectedClub && !centerAllowedView) {
       setNotice("Önce üst yönetim panelinden bir kulüp seçin.", true);
       viewId = "superAdminView";
     }
@@ -1133,17 +1169,19 @@
     state.attendanceSlots = slotsData.slots || [];
     const slotCounts = new Map(state.attendanceSlots.map((slot) => [normalizeTimeValue(slot.time), Number(slot.studentCount || 0)]));
     const firstActiveSlot = state.attendanceSlots.map((slot) => normalizeTimeValue(slot.time)).find(Boolean);
-    const currentTime = normalizeTimeValue(state.pendingAttendanceTime || els.attendanceSlotTime.value) || firstActiveSlot || lessonTimes[0];
+    const currentTime = normalizeTimeValue(state.pendingAttendanceTime || els.attendanceSlotTime.value) || firstActiveSlot || "";
     state.pendingAttendanceTime = null;
-    els.attendanceSlotTime.innerHTML = lessonTimes
+    els.attendanceSlotTime.innerHTML = [`<option value="">Saat seçiniz</option>`, ...lessonTimes
       .map((time) => {
         const count = slotCounts.get(time) || 0;
         const label = count ? `${time} · ${count} öğrenci` : time;
         return `<option value="${time}">${escapeHtml(label)}</option>`;
       })
-      .join("");
+    ].join("");
     if (currentTime && lessonTimes.includes(currentTime)) {
       els.attendanceSlotTime.value = currentTime;
+    } else {
+      els.attendanceSlotTime.value = "";
     }
     renderAttendanceTimeGrid();
     await loadLessonAttendance();
@@ -1169,11 +1207,28 @@
     if (!els.attendanceTimeGrid) return;
     const selected = normalizeTimeValue(els.attendanceSlotTime.value);
     const slotCounts = new Map(state.attendanceSlots.map((slot) => [normalizeTimeValue(slot.time), Number(slot.studentCount || 0)]));
+    const selectedCount = selected ? (slotCounts.get(selected) || 0) : 0;
+    if (els.attendanceSelectedTime) {
+      els.attendanceSelectedTime.textContent = selected || "Saat seçiniz";
+    }
+    if (els.attendanceTimeSummary) {
+      const filledSlots = state.attendanceSlots.filter((slot) => Number(slot.studentCount || 0) > 0).length;
+      els.attendanceTimeSummary.textContent = selected
+        ? `${selectedCount} öğrenci · başka saat seçmek için açın`
+        : `${filledSlots} dolu saat · saat seçmek için açın`;
+    }
+    if (els.attendanceTimePanel) {
+      els.attendanceTimePanel.classList.toggle("hidden", !state.attendanceTimesOpen);
+    }
+    if (els.attendanceTimeToggle) {
+      els.attendanceTimeToggle.setAttribute("aria-expanded", state.attendanceTimesOpen ? "true" : "false");
+      els.attendanceTimeToggle.classList.toggle("active", Boolean(selected));
+    }
     els.attendanceTimeGrid.innerHTML = lessonTimes.map((time) => {
       const count = slotCounts.get(time) || 0;
       const activeClass = time === selected ? " active" : "";
-      const countLabel = count ? `<span>${count}</span>` : "";
-      return `<button class="time-chip${activeClass}" data-action="select-attendance-time" data-time="${time}" type="button">${time}${countLabel}</button>`;
+      const emptyClass = count ? "" : " empty";
+      return `<button class="time-chip${activeClass}${emptyClass}" data-action="select-attendance-time" data-time="${time}" type="button"><strong>${time}</strong><span>${count} öğrenci</span></button>`;
     }).join("");
   }
 
@@ -1492,44 +1547,78 @@
 
   async function loadUsers() {
     if (!can("users:read")) return;
-    if (isSuperAdmin() && !state.selectedClub) {
-      switchView("superAdminView");
-      return;
+    if (isSuperAdmin() && !state.clubs.length) {
+      await loadClubs();
     }
-    const data = await api("/api/users");
+    populateUserClubControls();
+    const params = new URLSearchParams();
+    const search = (els.userSearch?.value || "").trim();
+    const role = els.userRoleFilter?.value || "all";
+    const club = els.userClubFilter?.value || "all";
+    if (search) params.set("search", search);
+    if (role !== "all") params.set("role", role);
+    if (club !== "all") params.set("clubId", club);
+    const query = params.toString();
+    const data = await api(`/api/users${query ? `?${query}` : ""}`);
     const users = data.users || [];
     els.userTable.innerHTML = users.length
       ? users.map((user) => `
           <tr>
-            <td data-label="Kullanıcı adı"><strong>${escapeHtml(user.username)}</strong></td>
-            <td data-label="Ad soyad">${escapeHtml(user.fullName)}</td>
+            <td data-label="Ad Soyad"><strong>${escapeHtml(user.fullName || "-")}</strong><br><span class="muted">${escapeHtml(userDisplayLine(user))}</span></td>
+            <td data-label="Kullanıcı adı / e-posta">${escapeHtml(user.username || "-")}</td>
             <td data-label="Rol">${roleBadge(user.normalizedRole || user.role, user.roleLabel)}</td>
+            <td data-label="Bağlı Kulüp">${escapeHtml(userClubName(user))}</td>
             <td data-label="Durum">${user.active ? statusBadge("Aktif") : statusBadge("Pasif")}</td>
-            <td data-label="Kulüp">${escapeHtml(user.clubId ? `Kulüp #${user.clubId}` : "-")}</td>
-            <td data-label="Yetki özeti">${escapeHtml((user.permissions || []).slice(0, 4).join(", "))}${(user.permissions || []).length > 4 ? "..." : ""}</td>
-            <td data-label="İşlem">
+            <td data-label="Son işlem">${escapeHtml(userDateLabel(user) || "-")}</td>
+            <td data-label="İşlemler">
               <div class="actions">
                 <button class="small-button secondary" data-action="edit-user" data-id="${user.id}" type="button">Düzenle</button>
                 <button class="small-button ${user.active ? "danger" : ""}" data-action="toggle-user-active" data-id="${user.id}" data-active="${user.active ? "false" : "true"}" type="button">${user.active ? "Pasif Yap" : "Aktif Yap"}</button>
+                <button class="small-button danger" data-action="soft-delete-user" data-id="${user.id}" type="button">Sil</button>
               </div>
             </td>
           </tr>
         `).join("")
-      : emptyRow(7, "Kullanıcı bulunamadı.", "Bu kulüp için kullanıcı kaydı görünmüyor.");
+      : emptyRow(7, "Kullanıcı bulunamadı.", "Arama veya filtre kriterlerini değiştirerek tekrar deneyin.");
     state.users = users;
     updateUserRoleOptions();
+  }
+
+  function populateUserClubControls() {
+    const clubOptions = state.clubs.map((club) => `<option value="${club.id}">${escapeHtml(club.name)}</option>`).join("");
+    if (els.userClubFilter) {
+      const current = els.userClubFilter.value || "all";
+      els.userClubFilter.innerHTML = `<option value="all">Tüm kulüpler</option><option value="center">KulüpAsist Merkez</option>${clubOptions}`;
+      els.userClubFilter.value = Array.from(els.userClubFilter.options).some((option) => option.value === current) ? current : "all";
+      els.userClubFilter.disabled = !isSuperAdmin();
+    }
+    if (els.newUserClubId) {
+      const current = els.newUserClubId.value || "";
+      els.newUserClubId.innerHTML = `<option value="">KulüpAsist Merkez</option>${clubOptions}`;
+      els.newUserClubId.value = Array.from(els.newUserClubId.options).some((option) => option.value === current) ? current : "";
+    }
   }
 
   function updateUserRoleOptions() {
     if (!els.newUserRole) return;
     const allowed = isSuperAdmin()
-      ? ["coach", "assistant", "viewer", "coordinator", "manager"]
+      ? ["super_admin", "manager", "coordinator", "coach", "assistant", "viewer"]
       : (normalizedRole() === "manager" ? ["manager", "coach", "assistant"] : ["coach", "assistant"]);
     Array.from(els.newUserRole.options).forEach((option) => {
       option.hidden = !allowed.includes(option.value);
       option.disabled = !allowed.includes(option.value);
     });
     if (!allowed.includes(els.newUserRole.value)) els.newUserRole.value = allowed[0];
+    if (els.newUserClubId) {
+      const role = els.newUserRole.value;
+      const clubRequired = role !== "super_admin";
+      els.newUserClubId.required = clubRequired && isSuperAdmin();
+      els.newUserClubId.disabled = !isSuperAdmin();
+      if (!isSuperAdmin()) {
+        els.newUserClubId.value = String(state.user?.clubId || "");
+      }
+      if (role === "super_admin") els.newUserClubId.value = "";
+    }
     updateCoachScopeHint();
   }
 
@@ -1547,6 +1636,13 @@
       els.newUserPassword.value = "";
       els.newUserPassword.required = true;
     }
+    if (els.newUserPasswordConfirm) {
+      els.newUserPasswordConfirm.value = "";
+      els.newUserPasswordConfirm.required = true;
+    }
+    if (els.newUserClubId && !isSuperAdmin()) {
+      els.newUserClubId.value = String(state.user?.clubId || "");
+    }
     if (els.saveUserButton) els.saveUserButton.textContent = "Kullanıcı Ekle";
     els.cancelUserEditButton?.classList.add("hidden");
     updateUserRoleOptions();
@@ -1560,10 +1656,15 @@
     if (usernameInput) usernameInput.value = user.username || "";
     if (fullNameInput) fullNameInput.value = user.fullName || "";
     if (els.newUserRole) els.newUserRole.value = user.normalizedRole || user.role || "coach";
+    if (els.newUserClubId) els.newUserClubId.value = user.clubId ? String(user.clubId) : "";
     if (els.newUserActive) els.newUserActive.value = user.active ? "true" : "false";
     if (els.newUserPassword) {
       els.newUserPassword.value = "";
       els.newUserPassword.required = false;
+    }
+    if (els.newUserPasswordConfirm) {
+      els.newUserPasswordConfirm.value = "";
+      els.newUserPasswordConfirm.required = false;
     }
     if (els.saveUserButton) els.saveUserButton.textContent = "Kullanıcıyı Güncelle";
     els.cancelUserEditButton?.classList.remove("hidden");
@@ -1795,8 +1896,13 @@
       if (action === "manage-club") await selectClub(id);
       if (action === "edit-student") openStudentEditor(state.students.find((student) => String(student.id) === String(id)));
       if (action === "mark-attendance") markLessonAttendance(id, button.dataset.status);
+      if (action === "toggle-attendance-times") {
+        state.attendanceTimesOpen = !state.attendanceTimesOpen;
+        renderAttendanceTimeGrid();
+      }
       if (action === "select-attendance-time") {
         els.attendanceSlotTime.value = button.dataset.time || "";
+        state.attendanceTimesOpen = false;
         await loadLessonAttendance();
       }
       if (action === "open-attendance-slot") {
@@ -1813,13 +1919,31 @@
         await api(`/api/users/${id}`, {
           method: "PATCH",
           body: JSON.stringify({
+            username: user.username,
             fullName: user.fullName,
             role: user.normalizedRole || user.role,
+            clubId: user.clubId || null,
             active
           })
         });
         await loadUsers();
         setNotice("Kullanıcı durumu güncellendi.");
+      }
+      if (action === "soft-delete-user") {
+        const user = state.users.find((item) => String(item.id) === String(id));
+        if (!user || !window.confirm("Bu kullanıcıyı silmek/pasife almak istediğinize emin misiniz?")) return;
+        await api(`/api/users/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            username: user.username,
+            fullName: user.fullName,
+            role: user.normalizedRole || user.role,
+            clubId: user.clubId || null,
+            active: false
+          })
+        });
+        await loadUsers();
+        setNotice("Kullanıcı güvenli şekilde pasife alındı.");
       }
       if (action === "delete-student" && window.confirm("Bu öğrenciyi silmek istediğinize emin misiniz?")) {
         await api(`/api/students/${id}`, { method: "DELETE" });
@@ -1923,6 +2047,7 @@
   });
 
   els.newUserRole?.addEventListener("change", updateCoachScopeHint);
+  els.newUserRole?.addEventListener("change", updateUserRoleOptions);
 
   els.userForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1932,9 +2057,18 @@
         username: $("#newUsername").value.trim(),
         fullName: $("#newUserFullName").value.trim(),
         role: $("#newUserRole").value,
+        clubId: els.newUserClubId?.value || null,
         active: els.newUserActive.value === "true"
       };
       const password = els.newUserPassword?.value || "";
+      const passwordConfirm = els.newUserPasswordConfirm?.value || "";
+      if (password || passwordConfirm) {
+        if (password !== passwordConfirm) {
+          setNotice("Şifre ve şifre tekrar eşleşmiyor.", true);
+          return;
+        }
+        body.passwordConfirm = passwordConfirm;
+      }
       if (password) body.password = password;
       await api(id ? `/api/users/${id}` : "/api/users", {
         method: id ? "PATCH" : "POST",
@@ -1949,6 +2083,23 @@
   });
 
   els.cancelUserEditButton.addEventListener("click", resetUserForm);
+  els.newUserButton?.addEventListener("click", () => {
+    resetUserForm();
+    els.userForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  els.userSearchButton?.addEventListener("click", loadUsers);
+  els.userSearchClearButton?.addEventListener("click", () => {
+    if (els.userSearch) els.userSearch.value = "";
+    if (els.userRoleFilter) els.userRoleFilter.value = "all";
+    if (els.userClubFilter) els.userClubFilter.value = "all";
+    loadUsers();
+  });
+  els.userSearch?.addEventListener("input", () => {
+    window.clearTimeout(state.userSearchTimer);
+    state.userSearchTimer = window.setTimeout(loadUsers, 300);
+  });
+  els.userRoleFilter?.addEventListener("change", loadUsers);
+  els.userClubFilter?.addEventListener("change", loadUsers);
 
   els.runBackupButton.addEventListener("click", async () => {
     try {

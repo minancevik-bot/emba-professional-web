@@ -82,6 +82,8 @@ function publicUser(user) {
     clubId: user.club_id || user.clubId || null,
     clubName: user.club_name || user.clubName || null,
     active: user.active,
+    createdAt: user.created_at || user.createdAt || null,
+    updatedAt: user.updated_at || user.updatedAt || null,
     permissions: permissionsFor(normalizedRole)
   };
 }
@@ -2084,17 +2086,40 @@ app.get(
   "/api/users",
   requireAuth,
   requirePermission("users:read"),
-  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const params = [];
     const filters = [];
-    addTenantFilter(filters, params, request.user, "users");
-    addClubManagedUserFilter(filters, params, request.user, "users");
+    if (isSuperAdmin(request.user)) {
+      const requestedClub = String(request.query.clubId || "all").trim();
+      if (requestedClub === "center") {
+        filters.push("users.club_id IS NULL");
+      } else {
+        const clubId = Number(requestedClub);
+        if (Number.isInteger(clubId) && clubId > 0) {
+          params.push(clubId);
+          filters.push(`users.club_id = $${params.length}`);
+        }
+      }
+    } else {
+      addTenantFilter(filters, params, request.user, "users");
+      addClubManagedUserFilter(filters, params, request.user, "users");
+    }
+    const roleFilter = String(request.query.role || "all").trim();
+    if (roleFilter !== "all") {
+      params.push(roleFilter);
+      filters.push(`users.role = $${params.length}`);
+    }
+    const search = nullableText(request.query.search);
+    if (search) {
+      params.push(`%${search}%`);
+      filters.push(`(users.full_name ILIKE $${params.length} OR users.username ILIKE $${params.length} OR clubs.name ILIKE $${params.length})`);
+    }
     const { rows } = await query(
-      `SELECT id, username, full_name, role, club_id, active, created_at, updated_at
+      `SELECT users.id, users.username, users.full_name, users.role, users.club_id, clubs.name AS club_name, users.active, users.created_at, users.updated_at
        FROM users
+       LEFT JOIN clubs ON clubs.id = users.club_id
        ${whereClause(filters)}
-       ORDER BY lower(full_name)`,
+       ORDER BY clubs.name NULLS FIRST, lower(users.full_name)`,
       params
     );
     response.json({ users: rows.map(publicUser) });
@@ -2105,7 +2130,6 @@ app.post(
   "/api/users",
   requireAuth,
   requirePermission("users:write"),
-  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const username = nullableText(request.body.username);
     const fullName = nullableText(request.body.fullName);
@@ -2119,23 +2143,52 @@ app.post(
       return;
     }
     const password = String(request.body.password || "");
+    if (request.body.passwordConfirm !== undefined && password !== String(request.body.passwordConfirm || "")) {
+      response.status(400).json({ error: "Sifre ve sifre tekrar eslesmiyor." });
+      return;
+    }
     if (!username || !fullName || password.length < 8) {
       response.status(400).json({ error: "Kullanici adi, ad soyad ve en az 8 karakter sifre gerekir." });
       return;
     }
     const passwordHash = await hashPassword(password);
     const { rows } = await transaction(async (client) => {
-      const clubId = await resolveWriteClubId(client, request);
+      const exists = await client.query("SELECT id FROM users WHERE lower(username) = lower($1)", [username]);
+      if (exists.rows[0]) {
+        const error = new Error("Bu kullanici adi/e-posta zaten kullaniliyor.");
+        error.status = 409;
+        throw error;
+      }
+      let clubId = null;
+      if (isSuperAdmin(request.user)) {
+        if (role !== "super_admin") {
+          clubId = Number(request.body.clubId);
+          if (!Number.isInteger(clubId) || clubId < 1) {
+            const error = new Error("Kulup yoneticisi/antrenor/yardimci kullanici icin bagli kulup secilmelidir.");
+            error.status = 400;
+            throw error;
+          }
+          const club = await client.query("SELECT id FROM clubs WHERE id = $1", [clubId]);
+          if (!club.rows[0]) {
+            const error = new Error("Secilen kulup bulunamadi.");
+            error.status = 404;
+            throw error;
+          }
+        }
+      } else {
+        clubId = getUserClubId(request.user) || await defaultClubId(client);
+      }
       if (!isSuperAdmin(request.user) && !clubId) {
         const error = new Error("Kulup baglantisi bulunamadi.");
         error.status = 400;
         throw error;
       }
+      const active = request.body.active === undefined ? true : boolValue(request.body.active);
       const result = await client.query(
-        `INSERT INTO users (username, full_name, role, password_hash, club_id)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO users (username, full_name, role, password_hash, club_id, active)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id, username, full_name, role, club_id, active, created_at, updated_at`,
-        [username, fullName, role, passwordHash, clubId]
+        [username, fullName, role, passwordHash, clubId, active]
       );
       await audit(client, request, "create", "user", result.rows[0].id, null, publicUser(result.rows[0]));
       return result;
@@ -2148,16 +2201,24 @@ app.patch(
   "/api/users/:id",
   requireAuth,
   requirePermission("users:write"),
-  requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
+    const username = nullableText(request.body.username);
     const fullName = nullableText(request.body.fullName);
     const role = normalizeCreatableRole(request.body.role, request.user);
     if (!role) {
       response.status(403).json({ error: "Bu rol icin yetkiniz yok." });
       return;
     }
-    const active = request.body.active !== false;
+    const requestedActive = request.body.active;
     const password = String(request.body.password || "");
+    if (request.body.passwordConfirm !== undefined && password !== String(request.body.passwordConfirm || "")) {
+      response.status(400).json({ error: "Sifre ve sifre tekrar eslesmiyor." });
+      return;
+    }
+    if (!username || !fullName) {
+      response.status(400).json({ error: "Kullanici adi/e-posta ve ad soyad zorunludur." });
+      return;
+    }
     if (password && password.length < 8) {
       response.status(400).json({ error: "Yeni sifre en az 8 karakter olmalidir." });
       return;
@@ -2175,6 +2236,7 @@ app.patch(
       response.status(404).json({ error: "Kullanici bulunamadi." });
       return;
     }
+    const active = requestedActive === undefined ? beforeResult.rows[0].active !== false : boolValue(requestedActive);
     if (!canManageClubUser(request.user, beforeResult.rows[0])) {
       response.status(403).json({ error: "Bu kullanici uzerinde islem yapamazsiniz." });
       return;
@@ -2185,20 +2247,48 @@ app.patch(
     }
 
     const updated = await transaction(async (client) => {
+      const exists = await client.query(
+        "SELECT id FROM users WHERE lower(username) = lower($1) AND id <> $2",
+        [username, request.params.id]
+      );
+      if (exists.rows[0]) {
+        const error = new Error("Bu kullanici adi/e-posta zaten kullaniliyor.");
+        error.status = 409;
+        throw error;
+      }
+      let clubId = beforeResult.rows[0].club_id || null;
+      if (isSuperAdmin(request.user)) {
+        if (role === "super_admin") {
+          clubId = null;
+        } else {
+          clubId = Number(request.body.clubId);
+          if (!Number.isInteger(clubId) || clubId < 1) {
+            const error = new Error("Bu rol icin bagli kulup secilmelidir.");
+            error.status = 400;
+            throw error;
+          }
+          const club = await client.query("SELECT id FROM clubs WHERE id = $1", [clubId]);
+          if (!club.rows[0]) {
+            const error = new Error("Secilen kulup bulunamadi.");
+            error.status = 404;
+            throw error;
+          }
+        }
+      }
       let result;
       if (password) {
         result = await client.query(
-          `UPDATE users SET full_name = $1, role = $2, active = $3, password_hash = $4
-           WHERE id = $5 AND ($6::bigint IS NULL OR club_id = $6)
+          `UPDATE users SET username = $1, full_name = $2, role = $3, club_id = $4, active = $5, password_hash = $6, updated_at = now()
+           WHERE id = $7 AND ($8::bigint IS NULL OR club_id = $8)
            RETURNING id, username, full_name, role, club_id, active, created_at, updated_at`,
-          [fullName, role, active, await hashPassword(password), request.params.id, beforeResult.rows[0].club_id]
+          [username, fullName, role, clubId, active, await hashPassword(password), request.params.id, beforeResult.rows[0].club_id]
         );
       } else {
         result = await client.query(
-          `UPDATE users SET full_name = $1, role = $2, active = $3
-           WHERE id = $4 AND ($5::bigint IS NULL OR club_id = $5)
+          `UPDATE users SET username = $1, full_name = $2, role = $3, club_id = $4, active = $5, updated_at = now()
+           WHERE id = $6 AND ($7::bigint IS NULL OR club_id = $7)
            RETURNING id, username, full_name, role, club_id, active, created_at, updated_at`,
-          [fullName, role, active, request.params.id, beforeResult.rows[0].club_id]
+          [username, fullName, role, clubId, active, request.params.id, beforeResult.rows[0].club_id]
         );
       }
       await audit(client, request, "update", "user", request.params.id, beforeResult.rows[0], publicUser(result.rows[0]));
