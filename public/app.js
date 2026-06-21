@@ -9,6 +9,7 @@
     attendanceSlots: [],
     attendanceReport: [],
     clubs: [],
+    users: [],
     selectedClub: null,
     importPreview: null,
     studentDetails: {},
@@ -31,7 +32,6 @@
     studentsView: ["Öğrenciler", "Kayıt, ders ve veli bilgilerini düzenleyin."],
     attendanceView: ["Yoklama", "Günlük ders katılımını hızlıca yönetin."],
     studentCreateView: ["Öğrenci Ekle", "Hızlı öğrenci kaydı oluşturun."],
-    attendanceReportView: ["Yoklama Raporu", "Devam/devamsızlık kayıtlarını filtreleyin."],
     paymentsView: ["Ödemeler", "Tahsilat, kalan bakiye ve WhatsApp takibini yapın."],
     importView: ["Toplu İçe Aktar", "Excel listesini önce önizleyin, sonra onaylayarak aktarın."],
     usersView: ["Kullanıcılar", "Rol ve durum bilgilerini kulüp bazında izleyin."],
@@ -57,8 +57,13 @@
     notice: $("#notice"),
     userBadge: $("#userBadge"),
     logoutButton: $("#logoutButton"),
+    brandHomeButton: $("#brandHomeButton"),
+    mobileBrandHomeButton: $("#mobileBrandHomeButton"),
     backToClubsButton: $("#backToClubsButton"),
     clubContextLabel: $("#clubContextLabel"),
+    topClubLogo: $("#topClubLogo"),
+    topClubLogoImage: $("#topClubLogoImage"),
+    topClubLogoFallback: $("#topClubLogoFallback"),
     globalSearch: $("#globalSearch"),
     superAdminCards: $("#superAdminCards"),
     clubGrid: $("#clubGrid"),
@@ -121,6 +126,11 @@
     importPreviewTable: $("#importPreviewTable"),
     userForm: $("#userForm"),
     userTable: $("#userTable"),
+    editUserId: $("#editUserId"),
+    newUserRole: $("#newUserRole"),
+    newUserActive: $("#newUserActive"),
+    saveUserButton: $("#saveUserButton"),
+    cancelUserEditButton: $("#cancelUserEditButton"),
     runBackupButton: $("#runBackupButton"),
     backupTable: $("#backupTable"),
     auditLogList: $("#auditLogList")
@@ -165,9 +175,10 @@
   }
 
   function recordNo(student) {
+    if (student.registrationNo) return student.registrationNo;
     const fallbackSlug = String(state.settings?.name || "").toLocaleLowerCase("tr-TR").includes("emba") ? "emba" : "kulup";
-    const prefix = String(state.selectedClub?.slug || fallbackSlug).slice(0, 4).toUpperCase();
-    return `${prefix}-${String(student.id || 0).padStart(4, "0")}`;
+    const prefix = String(state.selectedClub?.slug || student.clubSlug || fallbackSlug).toLocaleLowerCase("tr-TR");
+    return `${prefix}-${student.id || 0}`;
   }
 
   function normalizedRole() {
@@ -186,13 +197,23 @@
     return !isSuperAdmin() || Boolean(state.selectedClub?.id);
   }
 
+  function homeViewForRole() {
+    if (isSuperAdmin() && !state.selectedClub) return "superAdminView";
+    return "dashboardView";
+  }
+
   function can(permission) {
     return state.user?.permissions?.includes(permission);
   }
 
   function currentClubName() {
     if (isSuperAdmin()) return state.selectedClub?.name || "";
-    return state.settings?.name || "EMBA Spor Kulübü";
+    return state.user?.clubName || state.settings?.name || "EMBA Spor Kulübü";
+  }
+
+  function initials(value) {
+    const parts = String(value || "KulüpAsist").trim().split(/\s+/).filter(Boolean);
+    return parts.slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase("tr-TR") || "KA";
   }
 
   function lessonText(student) {
@@ -314,7 +335,13 @@
     state.user = null;
     state.selectedClub = null;
     state.clubs = [];
+    state.students = [];
+    state.payments = [];
+    state.attendance = [];
+    state.lessonAttendance = [];
+    state.attendanceReport = [];
     closeMobileMenu();
+    document.body.classList.remove("auth-loading");
     els.loginView.classList.remove("hidden");
     els.appShell.classList.add("hidden");
   }
@@ -324,22 +351,19 @@
     const dashboardButton = $('[data-view="dashboardView"] span');
     const studentsButton = $('[data-view="studentsView"] span');
     const attendanceButton = $('[data-view="attendanceView"] span');
-    const reportButton = $('[data-view="attendanceReportView"] span');
     const superButton = $('[data-view="superAdminView"] span');
-    if (superButton) superButton.textContent = "KulüpAsist Merkez";
+    if (superButton) superButton.textContent = "Yönetim Paneli";
     if (role === "coach") {
-      if (dashboardButton) dashboardButton.textContent = "Coach Sayfam";
+      if (dashboardButton) dashboardButton.textContent = "Sayfam";
       if (studentsButton) studentsButton.textContent = "Öğrenciler";
       if (attendanceButton) attendanceButton.textContent = "Yoklama Al";
-      if (reportButton) reportButton.textContent = "Yoklama Raporu";
     } else if (role === "coordinator") {
       if (dashboardButton) dashboardButton.textContent = "Operasyon";
       if (studentsButton) studentsButton.textContent = "Yeni Kayıt";
     } else {
-      if (dashboardButton) dashboardButton.textContent = "Panel";
+      if (dashboardButton) dashboardButton.textContent = "Yönetim Paneli";
       if (studentsButton) studentsButton.textContent = "Öğrenciler";
-      if (attendanceButton) attendanceButton.textContent = "Yoklama";
-      if (reportButton) reportButton.textContent = "Yoklama Raporu";
+      if (attendanceButton) attendanceButton.textContent = "Yoklama Al";
     }
   }
 
@@ -365,13 +389,33 @@
       els.dashboardClubLogo.hidden = !logo;
       if (logo) els.dashboardClubLogo.src = logo;
       if (els.dashboardClubFallback) els.dashboardClubFallback.classList.toggle("hidden", Boolean(logo));
+      if (els.dashboardClubFallback) els.dashboardClubFallback.textContent = initials(selectedName);
+    }
+    if (els.topClubLogo) {
+      const selectedSlug = String(state.selectedClub?.slug || "").toLowerCase();
+      const isEmba = selectedSlug === "emba" || (!isSuperAdmin() && currentClubName().toLocaleLowerCase("tr-TR").includes("emba"));
+      const logo = state.selectedClub?.logoUrl || (isEmba ? "/assets/emba-logo.jpeg" : "");
+      els.topClubLogo.classList.toggle("hidden", !selectedName);
+      if (els.topClubLogoImage) {
+        els.topClubLogoImage.hidden = !logo;
+        if (logo) els.topClubLogoImage.src = logo;
+      }
+      if (els.topClubLogoFallback) {
+        els.topClubLogoFallback.textContent = initials(selectedName);
+        els.topClubLogoFallback.hidden = Boolean(logo);
+      }
     }
   }
 
   function showApp() {
     els.loginView.classList.add("hidden");
     els.appShell.classList.remove("hidden");
-    els.userBadge.textContent = `${state.user.fullName} · ${state.user.roleLabel}`;
+    document.body.classList.remove("auth-loading");
+    const clubText = currentClubName();
+    els.userBadge.innerHTML = `
+      <strong>${escapeHtml(state.user.username || state.user.fullName || "")}</strong>
+      <span>${escapeHtml(state.user.roleLabel || state.user.role || "")}${clubText ? ` · ${escapeHtml(clubText)}` : ""}</span>
+    `;
     state.activeView = isSuperAdmin() ? "superAdminView" : "dashboardView";
     updateRoleMenuLabels();
     updateClubContext();
@@ -407,7 +451,7 @@
   function updatePageMeta(viewId) {
     let [title, subtitle] = viewMeta[viewId] || viewMeta.dashboardView;
     if (isCoach() && viewId === "dashboardView") {
-      title = "Coach Sayfam";
+      title = "Sayfam";
       subtitle = "Bugünkü dersler, hızlı yoklama ve son yoklama kayıtları.";
     }
     els.pageTitle.textContent = title;
@@ -432,7 +476,6 @@
     if (viewId === "dashboardView") loadDashboard();
     if (viewId === "studentsView") loadStudents();
     if (viewId === "attendanceView") loadAttendance();
-    if (viewId === "attendanceReportView") loadAttendanceReport();
     if (viewId === "paymentsView") loadPayments();
     if (viewId === "importView") renderImportPreview();
     if (viewId === "usersView") loadUsers();
@@ -452,9 +495,8 @@
     els.superAdminCards.innerHTML = [
       metricCard("Kulüp", totals.clubCount ?? state.clubs.length, "navy", "Sistemdeki kulüp"),
       metricCard("Aktif Kulüp", totals.activeClubCount ?? state.clubs.filter((club) => club.status === "active").length, "green", "Kullanımda"),
-      metricCard("Pasif Kulüp", totals.passiveClubCount ?? state.clubs.filter((club) => club.status !== "active").length, "red", "Pasif/askıda"),
-      metricCard("Öğrenci", totals.studentCount ?? 0, "gold", "Tüm kulüpler"),
-      metricCard("Kullanıcı", totals.userCount ?? 0, "navy", "Tüm roller")
+      metricCard("Toplam Öğrenci", totals.studentCount ?? 0, "gold", "Tüm kulüpler"),
+      metricCard("Toplam Kullanıcı", totals.userCount ?? 0, "navy", "Tüm roller")
     ].join("");
 
     els.clubGrid.innerHTML = state.clubs.length
@@ -798,8 +840,8 @@
               <summary>İşlemler</summary>
               <div>
                 <button class="small-button secondary" data-action="detail-student" data-id="${student.id}" type="button">Detay</button>
-                ${can("students:write") && !isCoach() ? `<button class="small-button" data-action="edit-student" data-id="${student.id}" type="button">Düzenle</button>` : ""}
-                ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${student.id}" type="button">Sil</button>` : ""}
+                ${can("students:write") ? `<button class="small-button" data-action="edit-student" data-id="${student.id}" type="button">Düzenle</button>` : ""}
+                ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${student.id}" type="button">Pasif Yap</button>` : ""}
               </div>
             </details>
           </td>
@@ -871,6 +913,9 @@
   function clearStudentForm() {
     els.studentForm.reset();
     $("#studentId").value = "";
+    $("#studentBirthYear").value = "";
+    $("#studentAgeGroup").value = "";
+    $("#studentAlternatePhone").value = "";
     $("#studentRegistrationDate").value = new Date().toISOString().slice(0, 10);
     $("#studentStatus").value = "Aktif";
     $("#studentProgram").value = "Yüzme";
@@ -890,12 +935,15 @@
     $("#studentId").value = student.id;
     $("#studentStatus").value = student.status;
     $("#studentFullName").value = student.fullName || "";
+    $("#studentBirthYear").value = student.birthYear || "";
+    $("#studentAgeGroup").value = student.ageGroup || "";
     $("#studentProgram").value = student.program || "";
     $("#studentLevel").value = student.level || "Başlangıç";
     $("#studentPackageCode").value = student.packageCode || "";
     $("#studentPackageName").value = student.packageName || "";
     $("#studentParentName").value = student.parentName || "";
     $("#studentPhone").value = student.phone || "";
+    $("#studentAlternatePhone").value = student.alternatePhone || "";
     $("#studentTotalSessions").value = student.monthlyTotalSessions || 0;
     $("#studentSwimmingSessions").value = student.monthlySwimmingSessions || 0;
     $("#studentSportSessions").value = student.monthlySportSessions || 0;
@@ -998,6 +1046,7 @@
           </tr>
         `).join("")
       : emptyRow(6, "Bu tarih için yoklama listesi boş.", "Ders seçip kayıt oluşturabilirsiniz.");
+    await loadAttendanceReport();
   }
 
   async function loadLessonAttendance() {
@@ -1324,9 +1373,53 @@
             <td data-label="Durum">${user.active ? statusBadge("Aktif") : statusBadge("Pasif")}</td>
             <td data-label="Kulüp">${escapeHtml(user.clubId ? `Kulüp #${user.clubId}` : "-")}</td>
             <td data-label="Yetki özeti">${escapeHtml((user.permissions || []).slice(0, 4).join(", "))}${(user.permissions || []).length > 4 ? "..." : ""}</td>
+            <td data-label="İşlem">
+              <div class="actions">
+                <button class="small-button secondary" data-action="edit-user" data-id="${user.id}" type="button">Düzenle</button>
+                <button class="small-button ${user.active ? "danger" : ""}" data-action="toggle-user-active" data-id="${user.id}" data-active="${user.active ? "false" : "true"}" type="button">${user.active ? "Pasif Yap" : "Aktif Yap"}</button>
+              </div>
+            </td>
           </tr>
         `).join("")
-      : emptyRow(6, "Kullanıcı bulunamadı.", "Bu kulüp için kullanıcı kaydı görünmüyor.");
+      : emptyRow(7, "Kullanıcı bulunamadı.", "Bu kulüp için kullanıcı kaydı görünmüyor.");
+    state.users = users;
+    updateUserRoleOptions();
+  }
+
+  function updateUserRoleOptions() {
+    if (!els.newUserRole) return;
+    const allowed = isSuperAdmin()
+      ? ["coach", "assistant", "viewer", "coordinator", "manager"]
+      : ["coach", "assistant", "viewer"];
+    Array.from(els.newUserRole.options).forEach((option) => {
+      option.hidden = !allowed.includes(option.value);
+      option.disabled = !allowed.includes(option.value);
+    });
+    if (!allowed.includes(els.newUserRole.value)) els.newUserRole.value = allowed[0];
+  }
+
+  function resetUserForm() {
+    els.userForm.reset();
+    els.editUserId.value = "";
+    els.newUserActive.value = "true";
+    els.newUserPassword.required = true;
+    els.saveUserButton.textContent = "Kullanıcı Ekle";
+    els.cancelUserEditButton.classList.add("hidden");
+    updateUserRoleOptions();
+  }
+
+  function startUserEdit(user) {
+    if (!user) return;
+    els.editUserId.value = user.id;
+    $("#newUsername").value = user.username || "";
+    $("#newUserFullName").value = user.fullName || "";
+    els.newUserRole.value = user.normalizedRole || user.role || "coach";
+    els.newUserActive.value = user.active ? "true" : "false";
+    $("#newUserPassword").value = "";
+    els.newUserPassword.required = false;
+    els.saveUserButton.textContent = "Kullanıcıyı Güncelle";
+    els.cancelUserEditButton.classList.remove("hidden");
+    updateUserRoleOptions();
   }
 
   async function loadBackups() {
@@ -1367,6 +1460,7 @@
     els.loginUsername.value = localStorage.getItem("kulupasist.rememberedUsername") || localStorage.getItem("emba.rememberedUsername") || "";
     els.rememberMe.checked = Boolean(els.loginUsername.value);
     clearStudentForm();
+    resetUserForm();
 
     try {
       const data = await api("/api/auth/me");
@@ -1386,6 +1480,9 @@
 
   els.mobileMenuButton.addEventListener("click", openMobileMenu);
   els.sidebarOverlay.addEventListener("click", closeMobileMenu);
+  [els.brandHomeButton, els.mobileBrandHomeButton].filter(Boolean).forEach((button) => {
+    button.addEventListener("click", () => switchView(homeViewForRole()));
+  });
 
   els.loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1397,7 +1494,8 @@
         method: "POST",
         body: JSON.stringify({
           username,
-          password: els.loginPassword.value
+          password: els.loginPassword.value,
+          rememberMe: els.rememberMe.checked
         })
       });
       if (els.rememberMe.checked) localStorage.setItem("kulupasist.rememberedUsername", username);
@@ -1424,6 +1522,12 @@
 
   els.logoutButton.addEventListener("click", async () => {
     await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+    localStorage.removeItem("kulupasist.rememberedUsername");
+    localStorage.removeItem("emba.rememberedUsername");
+    sessionStorage.clear();
+    els.loginUsername.value = "";
+    els.loginPassword.value = "";
+    els.rememberMe.checked = false;
     showLogin();
   });
 
@@ -1437,7 +1541,13 @@
   els.studentStatusFilter.addEventListener("change", loadStudents);
   els.globalSearch.addEventListener("input", () => {
     window.clearTimeout(state.searchTimer);
-    state.searchTimer = window.setTimeout(loadStudents, 220);
+    state.searchTimer = window.setTimeout(() => {
+      if (els.globalSearch.value.trim() && state.activeView !== "studentsView") {
+        switchView("studentsView");
+        return;
+      }
+      loadStudents();
+    }, 220);
   });
 
   els.newStudentButton.addEventListener("click", () => openStudentEditor());
@@ -1512,11 +1622,27 @@
       }
       if (action === "go-student-create") switchView("studentCreateView");
       if (action === "go-attendance") switchView("attendanceView");
-      if (action === "delete-student" && window.confirm("Bu öğrenci kaydı silinsin mi?")) {
+      if (action === "edit-user") startUserEdit(state.users.find((user) => String(user.id) === String(id)));
+      if (action === "toggle-user-active") {
+        const user = state.users.find((item) => String(item.id) === String(id));
+        const active = button.dataset.active === "true";
+        if (!user || !window.confirm(`${user.username} kullanıcısı ${active ? "aktif" : "pasif"} yapılsın mı?`)) return;
+        await api(`/api/users/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            fullName: user.fullName,
+            role: user.normalizedRole || user.role,
+            active
+          })
+        });
+        await loadUsers();
+        setNotice("Kullanıcı durumu güncellendi.");
+      }
+      if (action === "delete-student" && window.confirm("Bu öğrenci pasif yapılsın mı?")) {
         await api(`/api/students/${id}`, { method: "DELETE" });
         await loadStudents();
         await loadDashboard();
-        setNotice("Öğrenci silindi.");
+        setNotice("Öğrenci pasif yapıldı.");
       }
       if (action === "delete-payment" && window.confirm("Bu ödeme kaydı silinsin mi?")) {
         await api(`/api/payments/${id}`, { method: "DELETE" });
@@ -1605,22 +1731,28 @@
   els.userForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
-      await api("/api/users", {
-        method: "POST",
-        body: JSON.stringify({
-          username: $("#newUsername").value.trim(),
-          fullName: $("#newUserFullName").value.trim(),
-          role: $("#newUserRole").value,
-          password: $("#newUserPassword").value
-        })
+      const id = els.editUserId.value;
+      const body = {
+        username: $("#newUsername").value.trim(),
+        fullName: $("#newUserFullName").value.trim(),
+        role: $("#newUserRole").value,
+        active: els.newUserActive.value === "true"
+      };
+      const password = $("#newUserPassword").value;
+      if (password) body.password = password;
+      await api(id ? `/api/users/${id}` : "/api/users", {
+        method: id ? "PATCH" : "POST",
+        body: JSON.stringify(body)
       });
-      els.userForm.reset();
+      resetUserForm();
       await loadUsers();
-      setNotice("Kullanıcı eklendi.");
+      setNotice(id ? "Kullanıcı güncellendi." : "Kullanıcı eklendi.");
     } catch (error) {
       setNotice(error.message, true);
     }
   });
+
+  els.cancelUserEditButton.addEventListener("click", resetUserForm);
 
   els.runBackupButton.addEventListener("click", async () => {
     try {

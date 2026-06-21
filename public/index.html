@@ -6,7 +6,7 @@
     <title>KulüpAsist Merkez</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
-  <body>
+  <body class="auth-loading">
     <section id="loginView" class="login-view">
       <div class="login-shell">
         <div class="login-brand-panel">
@@ -42,13 +42,15 @@
       <div id="sidebarOverlay" class="sidebar-overlay" hidden></div>
       <header class="mobile-header">
         <button id="mobileMenuButton" class="icon-button" type="button" aria-label="Menüyü aç">☰</button>
-        <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
-        <span class="fallback-logo small" hidden>KA</span>
+        <button id="mobileBrandHomeButton" class="brand-home mobile-brand-home" type="button" aria-label="Ana sayfa">
+          <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+          <span class="fallback-logo small" hidden>KA</span>
+        </button>
         <strong>KulüpAsist</strong>
       </header>
 
       <aside id="sidebar" class="sidebar">
-        <div class="brand">
+        <button id="brandHomeButton" class="brand brand-home" type="button">
           <div class="app-logo">
             <img src="/assets/kulupasist-logo.png" alt="KulüpAsist logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
             <span class="fallback-logo" hidden>KA</span>
@@ -57,14 +59,13 @@
             <strong>KulüpAsist</strong>
             <span>Üst yönetim ve kulüp paneli</span>
           </div>
-        </div>
+        </button>
         <nav aria-label="Ana menü">
-          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Üst Yönetim</span></button>
+          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Yönetim Paneli</span></button>
           <button class="nav-button" data-view="dashboardView" data-permission="dashboard:read"><span>Panel</span></button>
           <button class="nav-button" data-view="studentsView" data-permission="students:read"><span>Öğrenciler</span></button>
           <button class="nav-button" data-view="studentCreateView" data-permission="students:write" data-coach-only="true"><span>Öğrenci Ekle</span></button>
           <button class="nav-button" data-view="attendanceView" data-permission="attendance:read"><span>Yoklama</span></button>
-          <button class="nav-button" data-view="attendanceReportView" data-permission="attendance:read"><span>Yoklama Raporu</span></button>
           <button class="nav-button" data-view="paymentsView" data-permission="payments:read"><span>Ödemeler</span></button>
           <button class="nav-button" data-view="importView" data-permission="students:import"><span>Toplu İçe Aktar</span></button>
           <button class="nav-button" data-view="usersView" data-permission="users:read"><span>Kullanıcılar</span></button>
@@ -88,8 +89,14 @@
           <div class="topbar-actions">
             <button id="backToClubsButton" class="secondary hidden" type="button">KulüpAsist Merkez'e Dön</button>
             <span id="clubContextLabel" class="user-badge hidden"></span>
-            <input id="globalSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
-            <span id="userBadge" class="user-badge"></span>
+            <div id="topClubLogo" class="top-club-logo hidden">
+              <img id="topClubLogoImage" alt="Kulüp logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
+              <span id="topClubLogoFallback" class="fallback-logo small" hidden>KA</span>
+            </div>
+            <div class="user-area">
+              <span id="userBadge" class="user-badge"></span>
+              <input id="globalSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
+            </div>
             <button id="logoutButton" class="secondary" type="button">Çıkış</button>
           </div>
         </header>
@@ -158,11 +165,11 @@
                   <label>Yönetici ad soyad<input id="clubAdminFullName" autocomplete="name"></label>
                   <label>Yönetici rolü
                     <select id="clubAdminRole">
-                      <option value="manager">Manager</option>
-                      <option value="coordinator">Coordinator</option>
-                      <option value="coach">Coach</option>
-                      <option value="assistant">Assistant</option>
-                      <option value="viewer">Viewer</option>
+                      <option value="manager">Kulüp Yetkilisi</option>
+                      <option value="coordinator">Koordinatör</option>
+                      <option value="coach">Antrenör</option>
+                      <option value="assistant">Asistan</option>
+                      <option value="viewer">İzleyici</option>
                     </select>
                   </label>
                   <label>Geçici şifre<input id="clubAdminPassword" type="password" autocomplete="new-password" minlength="8"></label>
@@ -360,16 +367,13 @@
               <tbody id="attendanceTable"></tbody>
             </table>
           </div>
-        </section>
-
-        <section id="attendanceReportView" class="view">
-          <div class="section-head">
+          <section class="panel attendance-report-panel">
+            <div class="panel-head">
             <div>
               <h2>Yoklama Raporu</h2>
               <p>Tarih, saat ve durum filtreleriyle devam/devamsızlık kayıtlarını inceleyin.</p>
             </div>
-          </div>
-          <section class="panel">
+            </div>
             <form id="attendanceReportForm" class="inline-form">
               <label>Başlangıç<input id="reportDateFrom" type="date"></label>
               <label>Bitiş<input id="reportDateTo" type="date"></label>
@@ -383,14 +387,14 @@
               </label>
               <button type="submit">Raporu Getir</button>
             </form>
+            <div id="attendanceReportSummary" class="metric-grid compact-metrics"></div>
+            <div class="table-card nested-table">
+              <table class="responsive-table">
+                <thead><tr><th>Tarih</th><th>Saat</th><th>Öğrenci</th><th>Durum</th><th>Yoklamayı Alan</th></tr></thead>
+                <tbody id="attendanceReportTable"></tbody>
+              </table>
+            </div>
           </section>
-          <div id="attendanceReportSummary" class="metric-grid compact-metrics"></div>
-          <div class="table-card">
-            <table class="responsive-table">
-              <thead><tr><th>Tarih</th><th>Saat</th><th>Öğrenci</th><th>Durum</th><th>Yoklamayı Alan</th></tr></thead>
-              <tbody id="attendanceReportTable"></tbody>
-            </table>
-          </div>
         </section>
 
         <section id="paymentsView" class="view">
@@ -472,14 +476,17 @@
             <form id="userForm" class="inline-form">
               <label>Kullanıcı adı<input id="newUsername" autocomplete="username" required></label>
               <label>Ad soyad<input id="newUserFullName" autocomplete="name" required></label>
-              <label>Rol<select id="newUserRole"><option value="coordinator">Coordinator</option><option value="coach">Coach</option><option value="assistant">Assistant</option><option value="viewer">Viewer</option><option value="manager">Manager</option></select></label>
-              <label>Şifre<input id="newUserPassword" type="password" autocomplete="new-password" minlength="8" required></label>
-              <button type="submit" data-requires="users:write">Kullanıcı Ekle</button>
+              <input id="editUserId" type="hidden">
+              <label>Rol<select id="newUserRole"><option value="coach">Antrenör</option><option value="assistant">Asistan</option><option value="viewer">İzleyici</option><option value="coordinator">Koordinatör</option><option value="manager">Kulüp Yetkilisi</option></select></label>
+              <label>Durum<select id="newUserActive"><option value="true">Aktif</option><option value="false">Pasif</option></select></label>
+              <label>Şifre<input id="newUserPassword" type="password" autocomplete="new-password" minlength="8"></label>
+              <button id="saveUserButton" type="submit" data-requires="users:write">Kullanıcı Ekle</button>
+              <button id="cancelUserEditButton" class="secondary hidden" type="button">İptal</button>
             </form>
           </section>
           <div class="table-card">
             <table class="responsive-table">
-              <thead><tr><th>Kullanıcı adı</th><th>Ad soyad</th><th>Rol</th><th>Durum</th><th>Kulüp</th><th>Yetki özeti</th></tr></thead>
+              <thead><tr><th>Kullanıcı adı</th><th>Ad soyad</th><th>Rol</th><th>Durum</th><th>Kulüp</th><th>Yetki özeti</th><th>İşlem</th></tr></thead>
               <tbody id="userTable"></tbody>
             </table>
           </div>

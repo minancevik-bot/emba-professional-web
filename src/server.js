@@ -29,9 +29,28 @@ const { runBackup, scheduleBackups } = require("./backup");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
+const IMPORT_EXTENSIONS = new Set([".xlsx", ".xls", ".csv"]);
+const IMPORT_MIME_TYPES = new Set([
+  "text/csv",
+  "application/csv",
+  "text/plain",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/octet-stream"
+]);
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_request, file, callback) => {
+    const extension = path.extname(file.originalname || "").toLowerCase();
+    if (IMPORT_EXTENSIONS.has(extension) && IMPORT_MIME_TYPES.has(file.mimetype || "application/octet-stream")) {
+      callback(null, true);
+      return;
+    }
+    const error = new Error("Yalnizca XLSX, XLS veya CSV dosyasi yuklenebilir.");
+    error.status = 400;
+    callback(error);
+  }
 });
 
 app.disable("x-powered-by");
@@ -61,6 +80,7 @@ function publicUser(user) {
     normalizedRole,
     roleLabel: roleLabel(normalizedRole),
     clubId: user.club_id || user.clubId || null,
+    clubName: user.club_name || user.clubName || null,
     active: user.active,
     permissions: permissionsFor(normalizedRole)
   };
@@ -180,7 +200,7 @@ async function fetchAccessibleStudentMeta(client, user, studentId) {
   const filters = ["s.id = $1"];
   addStudentAccessFilter(filters, params, user, "s");
   const { rows } = await client.query(
-    `SELECT s.id, s.full_name, s.club_id, s.branch_id, s.monthly_fee
+    `SELECT s.*
      FROM students s
      ${whereClause(filters)}
      LIMIT 1`,
@@ -205,9 +225,11 @@ async function requireAuth(request, response, next) {
        u.full_name,
        u.role,
        u.club_id,
-       u.active
+       u.active,
+       c.name AS club_name
      FROM sessions s
      JOIN users u ON u.id = s.user_id
+     LEFT JOIN clubs c ON c.id = u.club_id
      WHERE s.token_hash = $1`,
     [tokenHash(token)]
   );
@@ -369,12 +391,15 @@ function studentPayload(body) {
   return {
     status: ["Aktif", "Bekleyen", "Pasif"].includes(body.status) ? body.status : "Aktif",
     fullName: nullableText(body.fullName),
+    birthYear: numberValue(body.birthYear) || null,
+    ageGroup: nullableText(body.ageGroup),
     program: nullableText(body.program) || "Yüzme",
     level: nullableText(body.level) || "Başlangıç",
     packageCode: nullableText(body.packageCode),
     packageName: nullableText(body.packageName),
     parentName: nullableText(body.parentName),
     phone: nullableText(body.phone),
+    alternatePhone: nullableText(body.alternatePhone),
     socialMediaPermission: boolValue(body.socialMediaPermission),
     monthlyTotalSessions: numberValue(body.monthlyTotalSessions),
     monthlySwimmingSessions: numberValue(body.monthlySwimmingSessions),
@@ -387,16 +412,23 @@ function studentPayload(body) {
 }
 
 function mapStudent(row, user = null) {
+  const clubSlug = row.club_slug || row.clubSlug || null;
   const student = {
     id: row.id,
+    registrationNo: clubSlug ? `${clubSlug}-${row.id}` : String(row.id),
+    clubId: row.club_id,
+    clubSlug,
     status: row.status,
     fullName: row.full_name,
+    birthYear: row.birth_year,
+    ageGroup: row.age_group,
     program: row.program,
     level: row.level,
     packageCode: row.package_code,
     packageName: row.package_name,
     parentName: row.parent_name,
     phone: row.phone,
+    alternatePhone: row.alternate_phone,
     socialMediaPermission: row.social_media_permission,
     monthlyTotalSessions: row.monthly_total_sessions,
     monthlySwimmingSessions: row.monthly_swimming_sessions,
@@ -555,8 +587,20 @@ function rowsFromCsv(buffer) {
 
 async function rowsFromSpreadsheet(file) {
   const extension = path.extname(file.originalname || "").toLowerCase();
+  if (!IMPORT_EXTENSIONS.has(extension)) {
+    const error = new Error("Dosya formati desteklenmiyor. XLSX, XLS veya CSV yukleyin.");
+    error.status = 400;
+    throw error;
+  }
   if (extension === ".csv") return rowsFromCsv(file.buffer);
-  const matrix = await readXlsxFile(file.buffer);
+  let matrix;
+  try {
+    matrix = await readXlsxFile(file.buffer);
+  } catch (_error) {
+    const error = new Error("Excel dosyasi okunamadi. Dosyanin bozuk olmadigini ve ilk satirda basliklar oldugunu kontrol edin.");
+    error.status = 400;
+    throw error;
+  }
   if (!matrix.length) return [];
   const headers = matrix[0].map((value) => String(value || "").trim());
   return matrix.slice(1).map((values) => (
@@ -636,6 +680,7 @@ async function fetchStudent(client, id, user) {
   const { rows } = await client.query(
     `SELECT
        s.*,
+       c.slug AS club_slug,
        COALESCE(
          json_agg(
            json_build_object('id', l.id, 'day', l.day_of_week, 'time', l.start_time)
@@ -644,9 +689,10 @@ async function fetchStudent(client, id, user) {
          '[]'
        ) AS lessons
      FROM students s
+     LEFT JOIN clubs c ON c.id = s.club_id
      ${lessonJoin}
      ${whereClause(filters)}
-     GROUP BY s.id`,
+      GROUP BY s.id, c.slug`,
     params
   );
   return rows[0] ? mapStudent(rows[0], user) : null;
@@ -698,7 +744,13 @@ app.post(
   asyncHandler(async (request, response) => {
     const username = String(request.body.username || "").trim();
     const password = String(request.body.password || "");
-    const { rows } = await query("SELECT * FROM users WHERE username = $1 AND active = TRUE", [username]);
+    const { rows } = await query(
+      `SELECT u.*, c.name AS club_name
+       FROM users u
+       LEFT JOIN clubs c ON c.id = u.club_id
+       WHERE u.username = $1 AND u.active = TRUE`,
+      [username]
+    );
     const user = rows[0];
 
     if (!user || !(await verifyPassword(password, user.password_hash))) {
@@ -712,7 +764,7 @@ app.post(
        VALUES ($1, $2, $3, $4)`,
       [cryptoRandomId(), user.id, tokenHash(token), sessionExpiresAt()]
     );
-    setSessionCookie(response, token);
+    setSessionCookie(response, token, boolValue(request.body.rememberMe));
     response.json({ user: publicUser(user) });
   })
 );
@@ -1053,7 +1105,17 @@ app.post(
       response.status(400).json({ error: "Kulup baglantisi bulunamadi." });
       return;
     }
-    const rawRows = await rowsFromSpreadsheet(request.file);
+    let rawRows;
+    try {
+      rawRows = await rowsFromSpreadsheet(request.file);
+    } catch (error) {
+      response.status(error.status || 400).json({ error: error.message || "Dosya okunamadi." });
+      return;
+    }
+    if (!rawRows.length) {
+      response.status(400).json({ error: "Dosyada aktarilacak satir bulunamadi. Ilk satir baslik, sonraki satirlar ogrenci bilgisi olmalidir." });
+      return;
+    }
     const client = await pool.connect();
     try {
       const preview = await previewImportedStudents(client, clubId, rawRows);
@@ -1289,7 +1351,14 @@ app.get(
 
     if (search) {
       params.push(`%${search.toLocaleLowerCase("tr-TR")}%`);
-      filters.push(`lower(s.full_name) LIKE $${params.length}`);
+      filters.push(`(
+        lower(s.full_name) LIKE $${params.length}
+        OR lower(COALESCE(s.parent_name, '')) LIKE $${params.length}
+        OR lower(COALESCE(s.phone, '')) LIKE $${params.length}
+        OR lower(COALESCE(s.alternate_phone, '')) LIKE $${params.length}
+        OR s.id::text LIKE $${params.length}
+        OR lower(COALESCE(c.slug, '') || '-' || s.id::text) LIKE $${params.length}
+      )`);
     }
     if (status && status !== "all") {
       params.push(status);
@@ -1302,6 +1371,7 @@ app.get(
     const { rows } = await query(
       `SELECT
          s.*,
+         c.slug AS club_slug,
          COALESCE(
            json_agg(
              json_build_object('id', l.id, 'day', l.day_of_week, 'time', l.start_time)
@@ -1310,9 +1380,10 @@ app.get(
            '[]'
          ) AS lessons
        FROM students s
+       LEFT JOIN clubs c ON c.id = s.club_id
        ${lessonJoin}
        ${where}
-       GROUP BY s.id
+       GROUP BY s.id, c.slug
        ORDER BY lower(s.full_name) ASC
        LIMIT 500`,
       params
@@ -1351,22 +1422,25 @@ app.post(
       }
       const { rows } = await client.query(
         `INSERT INTO students (
-          status, full_name, program, level, package_code, package_name, parent_name, phone,
+          status, full_name, birth_year, age_group, program, level, package_code, package_name, parent_name, phone, alternate_phone,
           social_media_permission, monthly_total_sessions, monthly_swimming_sessions,
           monthly_sport_sessions, monthly_fee, registration_date, note, created_by, updated_by,
           club_id, branch_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16, $17, $18)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19, $20, $21)
         RETURNING id, club_id, branch_id`,
         [
           payload.status,
           payload.fullName,
+          payload.birthYear,
+          payload.ageGroup,
           payload.program,
           payload.level,
           payload.packageCode,
           payload.packageName,
           payload.parentName,
           payload.phone,
+          payload.alternatePhone,
           payload.socialMediaPermission,
           payload.monthlyTotalSessions,
           payload.monthlySwimmingSessions,
@@ -1395,10 +1469,6 @@ app.patch(
   requirePermission("students:write"),
   requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
-    if (isCoach(request.user)) {
-      response.status(403).json({ error: "Coach yalnizca yeni ogrenci ekleyebilir; duzenleme yetkisi manager tarafindadir." });
-      return;
-    }
     const payload = studentPayload(request.body);
     if (!payload.fullName) {
       response.status(400).json({ error: "Ogrenci adi zorunludur." });
@@ -1408,35 +1478,50 @@ app.patch(
     const student = await transaction(async (client) => {
       const studentMeta = await fetchAccessibleStudentMeta(client, request.user, request.params.id);
       if (!studentMeta) return null;
+      if (isCoach(request.user)) {
+        payload.packageCode = studentMeta.package_code;
+        payload.packageName = studentMeta.package_name;
+        payload.monthlyTotalSessions = Number(studentMeta.monthly_total_sessions || 0);
+        payload.monthlySwimmingSessions = Number(studentMeta.monthly_swimming_sessions || 0);
+        payload.monthlySportSessions = Number(studentMeta.monthly_sport_sessions || 0);
+        payload.monthlyFee = Number(studentMeta.monthly_fee || 0);
+        payload.registrationDate = studentMeta.registration_date || payload.registrationDate;
+      }
       const before = await fetchStudent(client, request.params.id, request.user);
       await client.query(
         `UPDATE students SET
           status = $1,
           full_name = $2,
-          program = $3,
-          level = $4,
-          package_code = $5,
-          package_name = $6,
-          parent_name = $7,
-          phone = $8,
-          social_media_permission = $9,
-          monthly_total_sessions = $10,
-          monthly_swimming_sessions = $11,
-          monthly_sport_sessions = $12,
-          monthly_fee = $13,
-          registration_date = $14,
-          note = $15,
-          updated_by = $16
-         WHERE id = $17 AND club_id = $18`,
+          birth_year = $3,
+          age_group = $4,
+          program = $5,
+          level = $6,
+          package_code = $7,
+          package_name = $8,
+          parent_name = $9,
+          phone = $10,
+          alternate_phone = $11,
+          social_media_permission = $12,
+          monthly_total_sessions = $13,
+          monthly_swimming_sessions = $14,
+          monthly_sport_sessions = $15,
+          monthly_fee = $16,
+          registration_date = $17,
+          note = $18,
+          updated_by = $19
+         WHERE id = $20 AND club_id = $21`,
         [
           payload.status,
           payload.fullName,
+          payload.birthYear,
+          payload.ageGroup,
           payload.program,
           payload.level,
           payload.packageCode,
           payload.packageName,
           payload.parentName,
           payload.phone,
+          payload.alternatePhone,
           payload.socialMediaPermission,
           payload.monthlyTotalSessions,
           payload.monthlySwimmingSessions,
@@ -1449,7 +1534,7 @@ app.patch(
           studentMeta.club_id
         ]
       );
-      await replaceLessons(client, request.params.id, payload.lessons, studentMeta);
+      await replaceLessons(client, request.params.id, payload.lessons, studentMeta, isCoach(request.user) ? request.user.id : null);
       const updated = await fetchStudent(client, request.params.id, request.user);
       await audit(client, request, "update", "student", request.params.id, before, updated);
       return updated;
@@ -1473,8 +1558,14 @@ app.delete(
       const studentMeta = await fetchAccessibleStudentMeta(client, request.user, request.params.id);
       if (!studentMeta) return;
       const before = await fetchStudent(client, request.params.id, request.user);
-      await client.query("DELETE FROM students WHERE id = $1 AND club_id = $2", [request.params.id, studentMeta.club_id]);
-      await audit(client, request, "delete", "student", request.params.id, before, null);
+      const { rows } = await client.query(
+        `UPDATE students
+         SET status = 'Pasif', updated_by = $1
+         WHERE id = $2 AND club_id = $3
+         RETURNING *`,
+        [request.user.id, request.params.id, studentMeta.club_id]
+      );
+      await audit(client, request, "deactivate", "student", request.params.id, before, rows[0]);
     });
     response.json({ ok: true });
   })
@@ -1656,6 +1747,7 @@ app.get(
       `SELECT l.start_time, COUNT(DISTINCT s.id)::int AS student_count
        FROM student_lessons l
        JOIN students s ON s.id = l.student_id
+       LEFT JOIN clubs c ON c.id = s.club_id
        ${whereClause(filters)}
        GROUP BY l.start_time
        ORDER BY l.start_time ASC`,
@@ -1710,7 +1802,7 @@ app.get(
         AND a.start_time = l.start_time
        LEFT JOIN users u ON u.id = a.recorded_by
        ${whereClause(filters)}
-       GROUP BY s.id, a.status, a.note, u.full_name
+       GROUP BY s.id, c.slug, a.status, a.note, u.full_name
        ORDER BY lower(s.full_name) ASC`,
       params
     );
@@ -2123,8 +2215,11 @@ app.get("*", (_request, response) => {
 
 app.use((error, _request, response, _next) => {
   console.error(error);
-  response.status(error.status || 500).json({
-    error: process.env.NODE_ENV === "production" ? "Sunucu hatasi olustu." : error.message
+  const isUploadError = error instanceof multer.MulterError;
+  const status = error.status || (isUploadError ? 400 : 500);
+  const uploadMessage = error.code === "LIMIT_FILE_SIZE" ? "Dosya boyutu en fazla 5 MB olabilir." : "Dosya yukleme hatasi olustu.";
+  response.status(status).json({
+    error: isUploadError ? uploadMessage : (status < 500 ? error.message : (process.env.NODE_ENV === "production" ? "Sunucu hatasi olustu." : error.message))
   });
 });
 
