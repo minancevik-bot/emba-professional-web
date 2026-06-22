@@ -13,6 +13,7 @@
     "create-club-manager": "node scripts/create-club-manager.js",
     "import-legacy": "node scripts/import-legacy-data.js",
     "import-excel-students": "node scripts/import-excel-students.js",
+    "restore-payments": "node scripts/restore-payments-from-backup.js",
     "preflight:saas": "node scripts/preflight-saas-check.js"
   },
   "engines": {
