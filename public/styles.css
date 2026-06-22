@@ -2567,3 +2567,380 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Mobile responsive stability */
+html,
+body {
+  max-width: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.responsive-table {
+  width: 100%;
+}
+
+.mobile-card-list,
+.search-toolbar,
+.page-actions,
+.stack-on-mobile,
+.mobile-actions {
+  min-width: 0;
+}
+
+.mobile-record-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  html,
+  body,
+  .app-shell,
+  .content,
+  .view,
+  .panel,
+  .detail-panel,
+  .section-head,
+  .dashboard-hero,
+  .table-card,
+  .attendance-report-panel {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .content {
+    overflow-x: hidden;
+  }
+
+  .topbar {
+    position: static;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .topbar-actions,
+  .user-area,
+  .filter-row,
+  .search-box,
+  .user-filter-panel,
+  .attendance-toolbar,
+  .coach-actions,
+  .inline-form,
+  .form-actions,
+  .actions,
+  .page-actions,
+  .search-toolbar,
+  .stack-on-mobile {
+    width: 100%;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    justify-items: stretch;
+    gap: 10px;
+  }
+
+  .topbar-actions > *,
+  .user-area > *,
+  .filter-row > *,
+  .search-box > *,
+  .inline-form > *,
+  .form-actions > *,
+  .actions > *,
+  .panel-head > *,
+  label,
+  input,
+  select,
+  button,
+  .small-button {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .user-area {
+    justify-items: stretch;
+  }
+
+  .user-area .user-badge,
+  #clubContextLabel.user-badge {
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .search-box,
+  .user-search-box,
+  .compact-search {
+    width: 100%;
+    padding: 10px;
+    box-shadow: none;
+  }
+
+  .search-box button,
+  .filter-row button,
+  .actions button,
+  .actions .small-button,
+  .form-actions button {
+    width: 100%;
+  }
+
+  .section-head,
+  .panel-head,
+  .attendance-report-title {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .section-head {
+    gap: 14px;
+  }
+
+  .dashboard-grid,
+  .super-admin-layout,
+  .club-grid,
+  .metric-grid,
+  .compact-metrics,
+  .form-grid,
+  .lesson-grid,
+  .inline-detail,
+  .import-form {
+    grid-template-columns: 1fr;
+  }
+
+  .wide-panel,
+  .span-2 {
+    grid-column: auto;
+  }
+
+  .club-card-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .table-card {
+    overflow: visible;
+  }
+
+  .table-card table.responsive-table,
+  .table-card table.responsive-table thead,
+  .table-card table.responsive-table tbody,
+  .table-card table.responsive-table th,
+  .table-card table.responsive-table td,
+  .table-card table.responsive-table tr {
+    display: block;
+  }
+
+  .table-card table.responsive-table {
+    min-width: 0;
+  }
+
+  .table-card table.responsive-table thead {
+    display: none;
+  }
+
+  .table-card table.responsive-table tbody tr {
+    overflow: hidden;
+    margin-bottom: 12px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .table-card table.responsive-table tbody tr.student-detail-row,
+  .table-card table.responsive-table tbody tr.empty-row {
+    overflow: visible;
+  }
+
+  .table-card table.responsive-table td {
+    display: grid;
+    grid-template-columns: minmax(96px, 38%) minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 13px 14px;
+    overflow-wrap: anywhere;
+  }
+
+  .table-card table.responsive-table td::before {
+    content: attr(data-label);
+    max-width: 100%;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .table-card table.responsive-table td > * {
+    min-width: 0;
+  }
+
+  .table-card table.responsive-table td:last-child {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .table-card table.responsive-table td:last-child::before {
+    margin-bottom: 2px;
+  }
+
+  .student-detail-row td,
+  .empty-row td {
+    display: block !important;
+  }
+
+  .student-detail-row td::before,
+  .empty-row td::before {
+    display: none !important;
+  }
+
+  .row-menu,
+  .row-menu summary,
+  .row-menu div {
+    width: 100%;
+  }
+
+  .row-menu div {
+    position: static;
+    margin-top: 8px;
+  }
+
+  .status-row,
+  .audit-item,
+  .compact-item,
+  .attendance-card {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .attendance-cards,
+  .lesson-attendance-cards,
+  .attendance-session-metrics,
+  .attendance-detail-row {
+    grid-template-columns: 1fr;
+  }
+
+  .attendance-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    width: 100%;
+  }
+
+  .lesson-card .attendance-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-card .small-button,
+  .attendance-actions .small-button,
+  .sticky-save button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .time-picker,
+  .time-picker-panel,
+  .time-chip-grid {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .time-chip-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .time-chip {
+    width: 100%;
+  }
+
+  .attendance-session-head {
+    min-height: 0;
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .attendance-session-detail {
+    padding: 14px;
+  }
+
+  .attendance-detail-row select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .soft-pill,
+  .badge,
+  .role-badge {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 14px;
+  }
+
+  .mobile-header {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .mobile-header strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-brand-home img {
+    max-width: 112px;
+  }
+
+  .content {
+    padding: 12px 10px 36px;
+  }
+
+  .section-head,
+  .dashboard-hero,
+  .panel,
+  .detail-panel,
+  .form-section {
+    padding: 14px;
+  }
+
+  .top-title-logo,
+  .section-logo-title {
+    align-items: flex-start;
+  }
+
+  .top-title-logo img,
+  .top-title-logo .fallback-logo {
+    width: 56px;
+    height: 56px;
+    max-width: 56px;
+    max-height: 56px;
+    border-radius: 16px;
+  }
+
+  .table-card table.responsive-table td {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .time-chip-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .attendance-session-head,
+  .attendance-session-detail {
+    padding: 12px;
+  }
+
+  .attendance-session-metrics span {
+    min-height: 44px;
+  }
+}

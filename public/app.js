@@ -1426,7 +1426,6 @@
     els.attendanceReportSessions.innerHTML = `
       <div class="attendance-report-title">
         <h3>${escapeHtml(title)}</h3>
-        ${data.cancellationMigrationRequired ? `<span class="soft-pill">İptal için migration gerekli</span>` : ""}
       </div>
       ${sessions.length ? sessions.map(renderAttendanceReportSession).join("") : emptyState("Bu gün için saat bazlı yoklama bulunamadı.", "Tarih veya filtreleri değiştirerek tekrar deneyin.")}
     `;
@@ -1465,9 +1464,9 @@
       ? `<button class="small-button secondary" data-action="${isEditing ? "cancel-report-edit" : "edit-report-session"}" data-session-id="${escapeHtml(session.id)}" type="button">${isEditing ? "Vazgeç" : "Düzenle"}</button>
          ${isEditing ? `<button class="small-button" data-action="save-report-session" data-session-id="${escapeHtml(session.id)}" type="button">Değişiklikleri Kaydet</button>` : ""}`
       : `<span class="soft-pill">Düzenleme yetkiniz yok</span>`;
-    const cancelInfo = detail.cancellationMigrationRequired
-      ? `<span class="soft-pill">Yoklamayı İptal Et: migration gerekli</span>`
-      : `<button class="small-button danger" data-action="cancel-attendance-session" data-session-id="${escapeHtml(session.id)}" type="button">Yoklamayı İptal Et</button>`;
+    const cancelInfo = detail.canCancel && !detail.cancellationMigrationRequired
+      ? `<button class="small-button danger" data-action="cancel-attendance-session" data-session-id="${escapeHtml(session.id)}" type="button">Yoklamayı İptal Et</button>`
+      : "";
     return `
       <div class="attendance-session-detail">
         <div class="panel-head">
@@ -2115,7 +2114,7 @@
       }
       if (action === "save-report-session") await saveAttendanceReportSession(button.dataset.sessionId);
       if (action === "cancel-attendance-session") {
-        setNotice("Yoklama iptali için migration gereklidir; hard delete yapılmadı.", true);
+        setNotice("Yoklama iptali şu anda aktif değil.", true);
       }
       if (action === "edit-user") startUserEdit(state.users.find((user) => String(user.id) === String(id)));
       if (action === "toggle-user-active") {
