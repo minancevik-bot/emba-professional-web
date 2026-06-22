@@ -44,6 +44,27 @@ app.use((request, response, next) => {
   next();
 });
 
+// CORS — mobil uygulama desteği
+const ALLOWED_ORIGINS = [
+  "http://localhost:8081",
+  "http://localhost:19006",
+  "http://localhost:3000"
+];
+app.use((request, response, next) => {
+  const origin = request.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Access-Control-Allow-Credentials", "true");
+    response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  }
+  if (request.method === "OPTIONS") {
+    response.status(204).end();
+    return;
+  }
+  next();
+});
+
 function asyncHandler(handler) {
   return (request, response, next) => {
     Promise.resolve(handler(request, response, next)).catch(next);
@@ -235,7 +256,7 @@ async function requireAuth(request, response, next) {
 
   const user = rows[0];
   if (!user || !user.active || new Date(user.expires_at) <= new Date()) {
-    clearSessionCookie(response);
+    clearSessionCookie(response, request);
     response.status(401).json({ error: "Oturum suresi doldu." });
     return;
   }
@@ -246,7 +267,7 @@ async function requireAuth(request, response, next) {
     user.club_id = await defaultClubId();
   }
   if (!isSuperAdmin(user) && !user.club_id) {
-    clearSessionCookie(response);
+    clearSessionCookie(response, request);
     response.status(403).json({ error: "Kullanici kulup baglantisi bulunamadi." });
     return;
   }
@@ -759,7 +780,7 @@ app.post(
        VALUES ($1, $2, $3, $4)`,
       [cryptoRandomId(), user.id, tokenHash(token), sessionExpiresAt()]
     );
-    setSessionCookie(response, token);
+    setSessionCookie(response, token, request);
     response.json({ user: publicUser(user) });
   })
 );
@@ -769,7 +790,7 @@ app.post(
   requireAuth,
   asyncHandler(async (request, response) => {
     await query("DELETE FROM sessions WHERE token_hash = $1", [tokenHash(request.sessionToken)]);
-    clearSessionCookie(response);
+    clearSessionCookie(response, request);
     response.json({ ok: true });
   })
 );

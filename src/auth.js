@@ -77,18 +77,25 @@ function parseCookies(request) {
   );
 }
 
-function setSessionCookie(response, token) {
+function setSessionCookie(response, token, request) {
   const signed = signToken(token);
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   const maxAge = SESSION_DAYS * 24 * 60 * 60;
+  const origin = request && request.headers && request.headers.origin;
+  const crossOrigin = origin && origin !== request.headers.host;
+  const sameSite = crossOrigin ? "None" : "Lax";
+  const secure = crossOrigin || process.env.NODE_ENV === "production" ? "; Secure" : "";
   response.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${encodeURIComponent(signed)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure}`
+    `${COOKIE_NAME}=${encodeURIComponent(signed)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=${sameSite}${secure}`
   );
 }
 
-function clearSessionCookie(response) {
-  response.setHeader("Set-Cookie", `${COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`);
+function clearSessionCookie(response, request) {
+  const origin = request && request.headers && request.headers.origin;
+  const crossOrigin = origin && origin !== request.headers.host;
+  const sameSite = crossOrigin ? "None" : "Lax";
+  const secure = crossOrigin ? "; Secure" : "";
+  response.setHeader("Set-Cookie", `${COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=${sameSite}${secure}`);
 }
 
 function getSessionToken(request) {
