@@ -12,6 +12,7 @@
     "promote-admin:super": "node scripts/promote-admin-to-super-admin.js",
     "create-club-manager": "node scripts/create-club-manager.js",
     "import-legacy": "node scripts/import-legacy-data.js",
+    "import-excel-students": "node scripts/import-excel-students.js",
     "preflight:saas": "node scripts/preflight-saas-check.js"
   },
   "engines": {
