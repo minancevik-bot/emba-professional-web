@@ -203,6 +203,27 @@ function validAttendanceEditStatus(status) {
   return ["present", "absent", "excused"].includes(status) ? status : null;
 }
 
+function canResetAttendanceSession(user) {
+  const role = normalizeUserRole(user);
+  return role === "manager" || role === "super_admin";
+}
+
+function hasForbiddenClubOverride(request) {
+  if (isSuperAdmin(request.user)) return false;
+  const requestedClubId = getSelectedClubId(request);
+  return requestedClubId && String(requestedClubId) !== String(getUserClubId(request.user) || "");
+}
+
+function parseAttendanceSessionId(value) {
+  const parts = String(value || "").split("_");
+  if (parts.length < 3) return null;
+  const lessonDate = parts[0];
+  const startTime = normalizeLessonTime(parts[1]);
+  const clubId = Number(parts[2]);
+  if (!validDateOrNull(lessonDate) || !startTime || !Number.isInteger(clubId) || clubId <= 0) return null;
+  return { lessonDate, startTime, clubId };
+}
+
 function whereClause(filters) {
   return filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 }
@@ -2022,6 +2043,9 @@ app.get(
   requireAuth,
   requirePermission("attendance:read"),
   asyncHandler(async (request, response) => {
+    if (hasForbiddenClubOverride(request)) {
+      throw httpError("Bu kulup raporu icin yetkiniz yok.", 403);
+    }
     const lessonDate = request.query.date || today();
     const params = [lessonDate];
     const filters = ["a.lesson_date = $1"];
@@ -2075,6 +2099,7 @@ app.get(
       params
     );
     const canEditRecords = can(request.user, "attendance:write");
+    const canResetSession = canResetAttendanceSession(request.user);
     const isToday = String(lessonDate) === today();
     response.json({
       date: lessonDate,
@@ -2101,6 +2126,7 @@ app.get(
         recordedAt: row.recorded_at,
         updatedAt: row.updated_at,
         canEdit: canEditRecords && (!isCoach(request.user) || isToday),
+        canReset: canResetSession,
         canCancel: false,
         cancellationMigrationRequired: true
       }))
@@ -2113,6 +2139,9 @@ app.get(
   requireAuth,
   requirePermission("attendance:read"),
   asyncHandler(async (request, response) => {
+    if (hasForbiddenClubOverride(request)) {
+      throw httpError("Bu kulup raporu icin yetkiniz yok.", 403);
+    }
     const lessonDate = request.query.date || today();
     const startTime = normalizeLessonTime(request.query.time);
     if (!startTime) {
@@ -2147,6 +2176,7 @@ app.get(
       date: lessonDate,
       time: startTime,
       canEdit: can(request.user, "attendance:write") && (!isCoach(request.user) || isToday),
+      canReset: canResetAttendanceSession(request.user),
       canCancel: false,
       cancellationMigrationRequired: true,
       records: rows.map((row) => ({
@@ -2154,6 +2184,183 @@ app.get(
         clubName: row.club_name
       }))
     });
+  })
+);
+
+app.get(
+  "/api/reports/attendance-print",
+  requireAuth,
+  requirePermission("attendance:read"),
+  asyncHandler(async (request, response) => {
+    if (hasForbiddenClubOverride(request)) {
+      throw httpError("Bu kulup raporu icin yetkiniz yok.", 403);
+    }
+    const lessonDate = validDateOrNull(request.query.date || today());
+    if (!lessonDate) {
+      throw httpError("Gecerli rapor tarihi secilmelidir.", 400);
+    }
+    const params = [lessonDate];
+    const filters = ["a.lesson_date = $1"];
+    addReportAttendanceAccessFilter(filters, params, request, "a");
+    const slotExpression = lessonTimeSql("a");
+    const { rows } = await query(
+      `SELECT
+         a.*,
+         ${slotExpression} AS normalized_start_time,
+         s.full_name AS student_name,
+         c.name AS club_name,
+         u.full_name AS recorded_by_name
+       FROM attendance_records a
+       JOIN students s ON s.id = a.student_id
+       LEFT JOIN clubs c ON c.id = a.club_id
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}
+       ORDER BY ${slotExpression} ASC, lower(s.full_name) ASC`,
+      params
+    );
+    const sessionsByKey = new Map();
+    for (const row of rows) {
+      const startTime = row.normalized_start_time || normalizeLessonTime(row.start_time) || row.start_time;
+      const key = `${dateOnly(row.lesson_date)}_${startTime}_${row.club_id || "center"}`;
+      if (!sessionsByKey.has(key)) {
+        sessionsByKey.set(key, {
+          id: key,
+          lessonDate: row.lesson_date,
+          dayOfWeek: row.day_of_week || dayNameForDate(row.lesson_date),
+          startTime,
+          clubId: row.club_id,
+          clubName: row.club_name,
+          total: 0,
+          present: 0,
+          absent: 0,
+          excused: 0,
+          other: 0,
+          recordedByNames: new Set(),
+          recordedAt: row.created_at,
+          updatedAt: row.updated_at,
+          records: []
+        });
+      }
+      const session = sessionsByKey.get(key);
+      session.total += 1;
+      if (row.status === "present") session.present += 1;
+      else if (row.status === "absent") session.absent += 1;
+      else if (row.status === "excused") session.excused += 1;
+      else session.other += 1;
+      if (row.recorded_by_name) session.recordedByNames.add(row.recorded_by_name);
+      if (!session.recordedAt || new Date(row.created_at) > new Date(session.recordedAt)) session.recordedAt = row.created_at;
+      if (!session.updatedAt || new Date(row.updated_at) > new Date(session.updatedAt)) session.updatedAt = row.updated_at;
+      session.records.push({
+        id: row.id,
+        studentId: row.student_id,
+        studentName: row.student_name,
+        status: row.status,
+        note: row.note,
+        recordedByName: row.recorded_by_name,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      });
+    }
+    const sessions = Array.from(sessionsByKey.values()).map((session) => ({
+      ...session,
+      recordedByName: Array.from(session.recordedByNames).join(", ") || "Sistem",
+      recordedByNames: undefined
+    }));
+    const totals = sessions.reduce((sum, session) => ({
+      total: sum.total + session.total,
+      present: sum.present + session.present,
+      absent: sum.absent + session.absent,
+      excused: sum.excused + session.excused,
+      other: sum.other + session.other
+    }), { total: 0, present: 0, absent: 0, excused: 0, other: 0 });
+    response.json({
+      date: lessonDate,
+      dayOfWeek: dayNameForDate(lessonDate),
+      preparedAt: new Date().toISOString(),
+      clubName: sessions[0]?.clubName || null,
+      sessions,
+      totals: {
+        ...totals,
+        attendanceRate: totals.total ? Math.round((totals.present / totals.total) * 100) : 0
+      }
+    });
+  })
+);
+
+app.patch(
+  "/api/reports/attendance-session/:id/reset",
+  requireAuth,
+  requirePermission("attendance:write"),
+  asyncHandler(async (request, response) => {
+    if (!canResetAttendanceSession(request.user)) {
+      throw httpError("Yoklama sifirlama yetkiniz yok.", 403);
+    }
+    if (String(request.body?.confirm || "").trim() !== "SIFIRLA") {
+      throw httpError("Yoklama sifirlama icin SIFIRLA onayi gereklidir.", 400);
+    }
+    const session = parseAttendanceSessionId(request.params.id);
+    if (!session) {
+      throw httpError("Gecerli yoklama oturumu secilmelidir.", 400);
+    }
+    if (hasForbiddenClubOverride(request)) {
+      throw httpError("Bu kulup yoklamasi icin yetkiniz yok.", 403);
+    }
+    const scopedClubId = isSuperAdmin(request.user) ? session.clubId : getUserClubId(request.user);
+    if (!scopedClubId || String(scopedClubId) !== String(session.clubId)) {
+      throw httpError("Bu kulup yoklamasi icin yetkiniz yok.", 403);
+    }
+
+    const resetResult = await transaction(async (client) => {
+      const params = [session.lessonDate, session.startTime, session.clubId];
+      const before = await client.query(
+        `SELECT a.*, s.full_name AS student_name
+         FROM attendance_records a
+         JOIN students s ON s.id = a.student_id
+         WHERE a.lesson_date = $1
+           AND ${lessonTimeSql("a")} = $2
+           AND a.club_id = $3
+         ORDER BY lower(s.full_name) ASC`,
+        params
+      );
+      if (!before.rows.length) {
+        throw httpError("Yoklama kaydi bulunamadi.", 404);
+      }
+      const deleted = await client.query(
+        `DELETE FROM attendance_records
+         WHERE lesson_date = $1
+           AND ${lessonTimeSql("attendance_records")} = $2
+           AND club_id = $3
+         RETURNING id`,
+        params
+      );
+      await audit(
+        client,
+        request,
+        "reset",
+        "attendance_session",
+        `${session.lessonDate}_${session.startTime}_${session.clubId}`,
+        {
+          club_id: session.clubId,
+          lessonDate: session.lessonDate,
+          startTime: session.startTime,
+          recordCount: before.rows.length,
+          recordIds: before.rows.map((row) => row.id)
+        },
+        {
+          club_id: session.clubId,
+          reset: true,
+          deletedRecordCount: deleted.rowCount
+        }
+      );
+      return {
+        resetCount: deleted.rowCount,
+        clubId: session.clubId,
+        lessonDate: session.lessonDate,
+        startTime: session.startTime
+      };
+    });
+
+    response.json({ ok: true, ...resetResult });
   })
 );
 

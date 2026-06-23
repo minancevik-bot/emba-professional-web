@@ -11,6 +11,7 @@
     attendanceReportSessions: [],
     attendanceReportDetails: {},
     editingReportSessionId: null,
+    pendingAttendanceResetSessionId: null,
     clubs: [],
     users: [],
     selectedClub: null,
@@ -132,8 +133,15 @@
     reportStatus: $("#reportStatus"),
     reportClub: $("#reportClub"),
     reportClubFilterWrap: $("#reportClubFilterWrap"),
+    printAttendanceReportButton: $("#printAttendanceReportButton"),
     attendanceReportSummary: $("#attendanceReportSummary"),
     attendanceReportSessions: $("#attendanceReportSessions"),
+    attendanceResetModal: $("#attendanceResetModal"),
+    attendanceResetSessionLabel: $("#attendanceResetSessionLabel"),
+    attendanceResetConfirmInput: $("#attendanceResetConfirmInput"),
+    confirmAttendanceResetButton: $("#confirmAttendanceResetButton"),
+    cancelAttendanceResetButton: $("#cancelAttendanceResetButton"),
+    printReport: $("#printReport"),
     paymentMonthFilter: $("#paymentMonthFilter"),
     paymentSearch: $("#paymentSearch"),
     paymentSearchButton: $("#paymentSearchButton"),
@@ -263,12 +271,6 @@
     return time ? `${time} - ${addMinutesToTime(time, 60)}` : "-";
   }
 
-  function dateInputValue(value) {
-    if (!value) return new Date().toISOString().slice(0, 10);
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
-    return String(value).slice(0, 10);
-  }
-
   function normalizeLessonDay(value) {
     const input = String(value || "").trim().toLocaleLowerCase("tr-TR");
     return lessonDays.find((day) => day.toLocaleLowerCase("tr-TR") === input) || "";
@@ -333,6 +335,11 @@
 
   function isCoach() {
     return normalizedRole() === "coach";
+  }
+
+  function canResetAttendanceSession() {
+    const role = normalizedRole();
+    return role === "manager" || role === "super_admin";
   }
 
   function hasSelectedClub() {
@@ -1540,6 +1547,9 @@
     const cancelInfo = detail.canCancel && !detail.cancellationMigrationRequired
       ? `<button class="small-button danger" data-action="cancel-attendance-session" data-session-id="${escapeHtml(session.id)}" type="button">Yoklamayı İptal Et</button>`
       : "";
+    const resetInfo = detail.canReset && canResetAttendanceSession()
+      ? `<button class="small-button danger" data-action="reset-attendance-session" data-session-id="${escapeHtml(session.id)}" type="button">Yoklamayı Sıfırla</button>`
+      : "";
     return `
       <div class="attendance-session-detail">
         <div class="panel-head">
@@ -1547,7 +1557,7 @@
             <h3>${escapeHtml(timeRangeLabel(session.startTime))} Detay</h3>
             <p>${rows.length} öğrenci listeleniyor</p>
           </div>
-          <div class="actions">${actions}${cancelInfo}</div>
+          <div class="actions report-detail-actions">${actions}${resetInfo}${cancelInfo}</div>
         </div>
         <div class="attendance-detail-list">
           ${rows.length ? rows.map((item) => `
@@ -1610,6 +1620,152 @@
     const session = state.attendanceReportSessions.find((item) => item.id === sessionId);
     if (session) await loadAttendanceReportDetail(session);
     setNotice("Yoklama raporu güncellendi.");
+  }
+
+  function dateOnlyLabel(value) {
+    const input = dateInputValue(value);
+    return input ? new Intl.DateTimeFormat("tr-TR").format(new Date(`${input}T12:00:00`)) : "-";
+  }
+
+  function dateTimeLabel(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return new Intl.DateTimeFormat("tr-TR", {
+      dateStyle: "short",
+      timeStyle: "short"
+    }).format(date);
+  }
+
+  function reportStatusText(status) {
+    return statusLabels[status] || status || "-";
+  }
+
+  function openAttendanceResetModal(sessionId) {
+    const session = state.attendanceReportSessions.find((item) => String(item.id) === String(sessionId));
+    if (!session || !canResetAttendanceSession()) return;
+    state.pendingAttendanceResetSessionId = session.id;
+    if (els.attendanceResetSessionLabel) {
+      els.attendanceResetSessionLabel.textContent = `${dateOnlyLabel(session.lessonDate || els.reportDate.value)} · ${timeRangeLabel(session.startTime)} · ${session.clubName || currentClubName() || "KulüpAsist"}`;
+    }
+    if (els.attendanceResetConfirmInput) els.attendanceResetConfirmInput.value = "";
+    els.attendanceResetModal?.classList.remove("hidden");
+    window.setTimeout(() => els.attendanceResetConfirmInput?.focus(), 50);
+  }
+
+  function closeAttendanceResetModal() {
+    state.pendingAttendanceResetSessionId = null;
+    if (els.attendanceResetConfirmInput) els.attendanceResetConfirmInput.value = "";
+    els.attendanceResetModal?.classList.add("hidden");
+  }
+
+  async function confirmAttendanceReset() {
+    const session = state.attendanceReportSessions.find((item) => String(item.id) === String(state.pendingAttendanceResetSessionId));
+    if (!session) {
+      closeAttendanceResetModal();
+      return;
+    }
+    if (String(els.attendanceResetConfirmInput?.value || "").trim() !== "SIFIRLA") {
+      setNotice("İşlem için SIFIRLA yazmalısınız.", true);
+      els.attendanceResetConfirmInput?.focus();
+      return;
+    }
+    try {
+      await api(`/api/reports/attendance-session/${encodeURIComponent(session.id)}/reset`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          confirm: "SIFIRLA",
+          date: dateInputValue(session.lessonDate || els.reportDate.value),
+          time: normalizeTimeValue(session.startTime),
+          clubId: session.clubId
+        })
+      });
+      closeAttendanceResetModal();
+      delete state.attendanceReportDetails[session.id];
+      if (state.editingReportSessionId === session.id) state.editingReportSessionId = null;
+      await loadAttendanceReport();
+      setNotice("Seçilen yoklama sıfırlandı.");
+    } catch (_error) {
+      setNotice("Yoklama sıfırlanırken hata oluştu.", true);
+    }
+  }
+
+  function renderPrintReport(data) {
+    const sessions = data.sessions || [];
+    const totals = data.totals || {};
+    const clubNames = Array.from(new Set(sessions.map((session) => session.clubName).filter(Boolean)));
+    const clubName = clubNames.length === 1
+      ? clubNames[0]
+      : (clubNames.length > 1 ? "Tüm Kulüpler" : (currentClubName() || "KulüpAsist"));
+    const attendanceRate = Number(totals.attendanceRate || 0);
+    els.printReport.innerHTML = `
+      <div class="print-report-page">
+        <header class="print-report-header">
+          <div>
+            <p>KulüpAsist Yoklama Raporu</p>
+            <h1>${escapeHtml(clubName)}</h1>
+          </div>
+          <div>
+            <strong>${escapeHtml(dateOnlyLabel(data.date))}</strong>
+            <span>${escapeHtml(data.dayOfWeek || "")}</span>
+            <small>Hazırlanma: ${escapeHtml(dateTimeLabel(data.preparedAt))}</small>
+          </div>
+        </header>
+        ${sessions.length ? sessions.map((session) => `
+          <section class="print-session">
+            <h2>${escapeHtml(timeRangeLabel(session.startTime))}</h2>
+            <div class="print-session-summary">
+              <span>Toplam <strong>${Number(session.total || 0)}</strong></span>
+              <span>Geldi <strong>${Number(session.present || 0)}</strong></span>
+              <span>Gelmedi <strong>${Number(session.absent || 0)}</strong></span>
+              <span>Mazeretli <strong>${Number(session.excused || 0)}</strong></span>
+              <span>Alan <strong>${escapeHtml(session.recordedByName || "-")}</strong></span>
+              <span>Alınma zamanı <strong>${escapeHtml(dateTimeLabel(session.recordedAt))}</strong></span>
+            </div>
+            <table class="print-table">
+              <thead><tr><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
+              <tbody>
+                ${(session.records || []).map((record) => `
+                  <tr>
+                    <td>${escapeHtml(record.studentName || "-")}</td>
+                    <td>${escapeHtml(reportStatusText(record.status))}</td>
+                    <td>${escapeHtml(record.note || "")}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </section>
+        `).join("") : `
+          <section class="print-empty">
+            <strong>Seçilen güne ait yoklama kaydı bulunamadı.</strong>
+          </section>
+        `}
+        <footer class="print-totals">
+          <span>Toplam yoklama kaydı <strong>${Number(totals.total || 0)}</strong></span>
+          <span>Toplam geldi <strong>${Number(totals.present || 0)}</strong></span>
+          <span>Toplam gelmedi <strong>${Number(totals.absent || 0)}</strong></span>
+          <span>Toplam mazeretli <strong>${Number(totals.excused || 0)}</strong></span>
+          <span>Devam oranı <strong>%${attendanceRate}</strong></span>
+        </footer>
+      </div>
+    `;
+  }
+
+  async function printAttendanceReport() {
+    const reportDate = els.reportDate.value || new Date().toISOString().slice(0, 10);
+    els.reportDate.value = reportDate;
+    const params = new URLSearchParams({ date: reportDate });
+    if (isSuperAdmin() && els.reportClub.value) params.set("clubId", els.reportClub.value);
+    try {
+      setNotice("Rapor çıktısı hazırlanıyor...");
+      const data = await api(`/api/reports/attendance-print?${params}`);
+      renderPrintReport(data);
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
+      window.print();
+      setNotice("");
+    } catch (_error) {
+      setNotice("Rapor çıktısı hazırlanırken hata oluştu.", true);
+    }
   }
 
   function buildPaymentRows() {
@@ -2243,6 +2399,7 @@
         renderAttendanceReportSessions();
       }
       if (action === "save-report-session") await saveAttendanceReportSession(button.dataset.sessionId);
+      if (action === "reset-attendance-session") openAttendanceResetModal(button.dataset.sessionId);
       if (action === "cancel-attendance-session") {
         setNotice("Yoklama iptali şu anda aktif değil.", true);
       }
@@ -2342,6 +2499,19 @@
       await loadAttendanceReport();
     } catch (error) {
       setNotice(error.message, true);
+    }
+  });
+
+  els.printAttendanceReportButton?.addEventListener("click", printAttendanceReport);
+  els.cancelAttendanceResetButton?.addEventListener("click", closeAttendanceResetModal);
+  els.confirmAttendanceResetButton?.addEventListener("click", confirmAttendanceReset);
+  els.attendanceResetModal?.addEventListener("click", (event) => {
+    if (event.target === els.attendanceResetModal) closeAttendanceResetModal();
+  });
+  els.attendanceResetConfirmInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      confirmAttendanceReset();
     }
   });
 

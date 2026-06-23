@@ -410,6 +410,7 @@
               </label>
               <label id="reportClubFilterWrap" class="hidden">Kulüp<select id="reportClub"><option value="">Tüm kulüpler</option></select></label>
               <button type="submit">Raporu Getir</button>
+              <button id="printAttendanceReportButton" class="secondary" type="button">Günlük Rapor Çıktısı</button>
             </form>
             <div id="attendanceReportSummary" class="metric-grid compact-metrics"></div>
             <div id="attendanceReportSessions" class="attendance-report-sessions"></div>
@@ -577,6 +578,23 @@
         <footer class="app-footer">KulüpAsist © 2026 · İnan Çevik</footer>
       </main>
     </div>
+
+    <section id="attendanceResetModal" class="confirm-modal hidden no-print" aria-modal="true" role="dialog" aria-labelledby="attendanceResetTitle">
+      <div class="confirm-modal__card">
+        <h2 id="attendanceResetTitle">Yoklama Sıfırlansın mı?</h2>
+        <p>Bu işlem sadece seçili tarih ve saate ait yoklama sonuçlarını temizler. Öğrenciler, ödemeler ve ders saatleri silinmez.</p>
+        <p id="attendanceResetSessionLabel" class="soft-pill"></p>
+        <label>Onay için SIFIRLA yazın
+          <input id="attendanceResetConfirmInput" autocomplete="off" placeholder="SIFIRLA">
+        </label>
+        <div class="actions">
+          <button id="cancelAttendanceResetButton" class="secondary" type="button">Vazgeç</button>
+          <button id="confirmAttendanceResetButton" class="danger" type="button">Yoklamayı Sıfırla</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="printReport" class="print-report" aria-hidden="true"></section>
 
     <script src="/app.js"></script>
   </body>
