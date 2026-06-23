@@ -41,6 +41,7 @@
             <span>Beni hatırla</span>
           </label>
           <button type="submit" class="primary-action">Giriş Yap</button>
+          <button id="continueSessionButton" type="button" class="secondary hidden">Mevcut oturumla devam et</button>
           <span id="loginMessage" class="form-message" aria-live="polite"></span>
         </form>
       </div>
@@ -439,13 +440,17 @@
           <div id="paymentStats" class="metric-grid compact-metrics"></div>
           <section class="panel">
             <form id="paymentForm" class="inline-form">
+              <input id="paymentId" type="hidden">
               <label>Öğrenci<select id="paymentStudent" required></select></label>
               <label>Aylık ücret<input id="paymentMonthlyFee" type="number" min="0" required></label>
               <label>Ödenen<input id="paymentPaidAmount" type="number" min="0" required></label>
+              <label>Durum<select id="paymentEditStatus"><option value="partial">Kısmi</option><option value="paid">Ödendi</option><option value="unpaid">Ödenmedi</option></select></label>
+              <label>Ay / dönem<input id="paymentPeriodMonth" type="month" required></label>
               <label>Tarih<input id="paymentDate" type="date"></label>
               <label>Yöntem<input id="paymentMethod" placeholder="Nakit / Havale"></label>
               <label>Açıklama<input id="paymentDescription"></label>
-              <button type="submit" data-requires="payments:write">Ödeme Ekle</button>
+              <button id="savePaymentButton" type="submit" data-requires="payments:write">Ödeme Ekle</button>
+              <button id="cancelPaymentEditButton" class="secondary hidden" type="button">Vazgeç</button>
             </form>
           </section>
           <div class="table-card">

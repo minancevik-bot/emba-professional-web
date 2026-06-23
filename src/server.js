@@ -231,6 +231,24 @@ async function fetchAccessibleStudentMeta(client, user, studentId) {
   return rows[0] || null;
 }
 
+async function fetchPaymentForWrite(client, user, paymentId) {
+  const { rows } = await client.query(
+    `SELECT p.*, s.full_name AS student_name
+     FROM payments p
+     JOIN students s ON s.id = p.student_id
+     WHERE p.id = $1
+     LIMIT 1`,
+    [paymentId]
+  );
+  const payment = rows[0] || null;
+  if (!payment) return { payment: null, forbidden: false };
+  const scopedClubId = isSuperAdmin(user) ? user.selectedClubId : getUserClubId(user);
+  if (!scopedClubId || String(payment.club_id) !== String(scopedClubId)) {
+    return { payment, forbidden: true };
+  }
+  return { payment, forbidden: false };
+}
+
 async function requireAuth(request, response, next) {
   const token = getSessionToken(request);
   if (!token) {
@@ -393,6 +411,34 @@ function normalizePeriodMonth(value) {
   if (/^\d{4}-\d{2}$/.test(input)) return `${input}-01`;
   if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return `${input.slice(0, 7)}-01`;
   return `${new Date().toISOString().slice(0, 7)}-01`;
+}
+
+function validPeriodMonth(value) {
+  const input = String(value || "").trim();
+  if (/^\d{4}-\d{2}$/.test(input)) return `${input}-01`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return `${input.slice(0, 7)}-01`;
+  return null;
+}
+
+function validDateOrNull(value) {
+  if (value === undefined) return undefined;
+  const input = String(value || "").trim();
+  if (!input) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) return undefined;
+  const date = new Date(`${input}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? undefined : input;
+}
+
+function nonNegativeAmount(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function httpError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
 }
 
 function normalizeLessonTime(value) {
@@ -1712,6 +1758,85 @@ app.post(
       [payment.id, payment.club_id]
     );
     response.status(201).json({ payment: mapPayment(rows[0]) });
+  })
+);
+
+app.patch(
+  "/api/payments/:id",
+  requireAuth,
+  requirePermission("payments:write"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const paymentId = Number(request.params.id);
+    if (!Number.isInteger(paymentId) || paymentId <= 0) {
+      throw httpError("Gecersiz odeme kaydi.", 400);
+    }
+
+    const updated = await transaction(async (client) => {
+      const { payment: before, forbidden } = await fetchPaymentForWrite(client, request.user, paymentId);
+      if (forbidden) throw httpError("Bu odeme kaydi icin yetkiniz yok.", 403);
+      if (!before) throw httpError("Odeme kaydi bulunamadi.", 404);
+
+      const periodMonth = request.body.periodMonth === undefined
+        ? dateOnly(before.period_month)
+        : validPeriodMonth(request.body.periodMonth);
+      if (!periodMonth) throw httpError("Gecersiz ay/donem.", 400);
+
+      const paymentDate = request.body.paymentDate === undefined
+        ? (before.payment_date ? dateOnly(before.payment_date) : null)
+        : validDateOrNull(request.body.paymentDate);
+      if (paymentDate === undefined) throw httpError("Gecersiz odeme tarihi.", 400);
+
+      const monthlyFee = nonNegativeAmount(request.body.monthlyFee, Number(before.monthly_fee || 0));
+      if (monthlyFee === null) throw httpError("Aylik ucret negatif veya gecersiz olamaz.", 400);
+
+      let paidAmount = nonNegativeAmount(request.body.paidAmount, Number(before.paid_amount || 0));
+      if (paidAmount === null) throw httpError("Odeme tutari negatif veya gecersiz olamaz.", 400);
+
+      const status = request.body.status === undefined ? null : String(request.body.status || "").trim();
+      if (status && !["paid", "partial", "unpaid"].includes(status)) {
+        throw httpError("Gecersiz odeme durumu.", 400);
+      }
+      if (status === "paid") paidAmount = monthlyFee;
+      if (status === "unpaid") paidAmount = 0;
+      if (paidAmount > monthlyFee) paidAmount = monthlyFee;
+
+      const method = request.body.method === undefined ? before.method : nullableText(request.body.method);
+      const description = request.body.description === undefined ? before.description : nullableText(request.body.description);
+
+      const { rows } = await client.query(
+        `UPDATE payments SET
+           period_month = $1,
+           monthly_fee = $2,
+           paid_amount = $3,
+           payment_date = $4,
+           method = $5,
+           description = $6
+         WHERE id = $7 AND club_id = $8
+         RETURNING *`,
+        [
+          periodMonth,
+          monthlyFee,
+          paidAmount,
+          paymentDate,
+          method,
+          description,
+          paymentId,
+          before.club_id
+        ]
+      );
+      await audit(client, request, "update", "payment", paymentId, before, rows[0]);
+      return rows[0];
+    });
+
+    const { rows } = await query(
+      `SELECT p.*, s.full_name AS student_name
+       FROM payments p
+       JOIN students s ON s.id = p.student_id
+       WHERE p.id = $1 AND p.club_id = $2`,
+      [updated.id, updated.club_id]
+    );
+    response.json({ payment: mapPayment(rows[0]) });
   })
 );
 

@@ -2944,3 +2944,74 @@ body {
     min-height: 44px;
   }
 }
+
+/* Payment editing and mobile payment cards */
+.payment-actions {
+  align-items: center;
+}
+
+.payment-actions .small-button {
+  min-height: 44px;
+}
+
+@media (max-width: 768px) {
+  #paymentsView .section-head,
+  #paymentsView .filter-row,
+  #paymentsView .inline-form {
+    gap: 12px;
+  }
+
+  #paymentForm {
+    padding: 2px;
+  }
+
+  #paymentForm button {
+    width: 100%;
+  }
+
+  .payment-row {
+    border-radius: 20px !important;
+  }
+
+  .payment-row td:first-child {
+    padding-top: 16px;
+  }
+
+  .payment-row td:last-child {
+    padding-bottom: 16px;
+  }
+
+  .payment-row td[data-label="Öğrenci"] strong {
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  .payment-row .money {
+    font-size: 15px;
+    font-weight: 900;
+  }
+
+  .payment-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .payment-actions .small-button,
+  .payment-actions button {
+    width: 100%;
+    padding-inline: 10px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  .payment-actions {
+    grid-template-columns: 1fr;
+  }
+
+  #paymentForm {
+    gap: 10px;
+  }
+}

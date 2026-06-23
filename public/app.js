@@ -17,6 +17,7 @@
     importPreview: null,
     studentDetails: {},
     openStudentId: null,
+    editingPaymentId: null,
     activeView: "superAdminView",
     pendingAttendanceTime: null,
     attendanceTimesOpen: false,
@@ -62,6 +63,7 @@
     loginUsername: $("#loginUsername"),
     loginPassword: $("#loginPassword"),
     rememberMe: $("#rememberMe"),
+    continueSessionButton: $("#continueSessionButton"),
     loginMessage: $("#loginMessage"),
     sidebar: $("#sidebar"),
     sidebarOverlay: $("#sidebarOverlay"),
@@ -139,10 +141,17 @@
     paymentStatusFilter: $("#paymentStatusFilter"),
     paymentStats: $("#paymentStats"),
     paymentForm: $("#paymentForm"),
+    paymentId: $("#paymentId"),
     paymentStudent: $("#paymentStudent"),
     paymentMonthlyFee: $("#paymentMonthlyFee"),
     paymentPaidAmount: $("#paymentPaidAmount"),
+    paymentEditStatus: $("#paymentEditStatus"),
+    paymentPeriodMonth: $("#paymentPeriodMonth"),
     paymentDate: $("#paymentDate"),
+    paymentMethod: $("#paymentMethod"),
+    paymentDescription: $("#paymentDescription"),
+    savePaymentButton: $("#savePaymentButton"),
+    cancelPaymentEditButton: $("#cancelPaymentEditButton"),
     paymentTable: $("#paymentTable"),
     importForm: $("#importForm"),
     importFile: $("#importFile"),
@@ -199,9 +208,34 @@
     return new Date().toISOString().slice(0, 7);
   }
 
+  function dateInputValue(value) {
+    if (!value) return "";
+    const raw = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  function monthInputValue(value) {
+    if (!value) return monthValue();
+    const raw = String(value);
+    if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw.slice(0, 7);
+    const dateValue = dateInputValue(value);
+    return dateValue ? dateValue.slice(0, 7) : monthValue();
+  }
+
   function monthLabel(value) {
     if (!value) return "";
-    const month = String(value).slice(0, 7);
+    const month = monthInputValue(value);
     const [year, monthNumber] = month.split("-");
     const date = new Date(Number(year), Number(monthNumber) - 1, 1);
     return new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" }).format(date);
@@ -468,6 +502,37 @@
     document.body.classList.remove("auth-loading");
     els.loginView.classList.remove("hidden");
     els.appShell.classList.add("hidden");
+    els.continueSessionButton?.classList.toggle("hidden", !state.user);
+  }
+
+  function showLoginWithExistingSession(user) {
+    state.user = user;
+    closeMobileMenu();
+    document.body.classList.remove("auth-loading");
+    els.loginView.classList.remove("hidden");
+    els.appShell.classList.add("hidden");
+    els.continueSessionButton?.classList.remove("hidden");
+    if (els.loginMessage) {
+      els.loginMessage.textContent = "Mevcut oturum bulundu. Devam etmek için butona basın.";
+      els.loginMessage.classList.remove("error");
+    }
+  }
+
+  async function continueExistingSession() {
+    let user = state.user;
+    if (!user) {
+      const data = await api("/api/auth/me");
+      user = data.user;
+      state.user = user;
+    }
+    showApp();
+    if (isSuperAdmin()) {
+      switchView("superAdminView");
+    } else {
+      if (!isCoach()) await loadSettings();
+      await loadStudents();
+      switchView("dashboardView");
+    }
   }
 
   function updateRoleMenuLabels() {
@@ -793,6 +858,14 @@
     const paid = Number(payment.paidAmount || 0);
     const remaining = Number(payment.remainingAmount ?? Math.max(0, Number(payment.monthlyFee || 0) - paid));
     if (remaining <= 0 && paid > 0) return "paid";
+    if (paid > 0) return "partial";
+    return "unpaid";
+  }
+
+  function paymentStatusFromAmounts(monthlyFee, paidAmount) {
+    const fee = Number(monthlyFee || 0);
+    const paid = Number(paidAmount || 0);
+    if (fee > 0 && paid >= fee) return "paid";
     if (paid > 0) return "partial";
     return "unpaid";
   }
@@ -1635,7 +1708,7 @@
         const statusKey = paymentStatus(payment);
         const whatsApp = whatsappLink(payment);
         return `
-          <tr>
+          <tr class="payment-row mobile-record-card">
             <td data-label="Öğrenci"><strong>${escapeHtml(payment.studentName)}</strong><br><span class="muted">${recordNo({ id: payment.studentId })}</span></td>
             <td data-label="Veli">${escapeHtml(payment.parentName || "-")}</td>
             <td data-label="Telefon">${escapeHtml(payment.phone || "-")}</td>
@@ -1645,7 +1718,8 @@
             <td data-label="Kalan" class="money">${money(payment.remainingAmount)}</td>
             <td data-label="Durum">${paymentStatusBadge(statusKey)}</td>
             <td data-label="İşlem">
-              <div class="actions">
+              <div class="actions payment-actions">
+                ${can("payments:write") && payment.id ? `<button class="small-button secondary" data-action="edit-payment" data-id="${payment.id}" type="button">Düzenle</button>` : ""}
                 ${whatsApp ? `<a class="small-button whatsapp" href="${whatsApp}" target="_blank" rel="noopener">WhatsApp</a>` : `<span class="small-button disabled">WhatsApp</span>`}
                 ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${payment.studentId}" type="button">Öğrenciyi Sil</button>` : ""}
                 ${can("payments:delete") && payment.id ? `<button class="small-button danger" data-action="delete-payment" data-id="${payment.id}" type="button">Sil</button>` : ""}
@@ -1659,7 +1733,58 @@
 
   function syncPaymentFee() {
     const option = els.paymentStudent.selectedOptions[0];
-    if (option) els.paymentMonthlyFee.value = option.dataset.fee || 0;
+    if (option && !state.editingPaymentId) {
+      els.paymentMonthlyFee.value = option.dataset.fee || 0;
+      syncPaymentStatusFromAmounts();
+    }
+  }
+
+  function applyPaymentStatusToAmount() {
+    const status = els.paymentEditStatus?.value || "partial";
+    const fee = Number(els.paymentMonthlyFee?.value || 0);
+    if (status === "paid") els.paymentPaidAmount.value = fee;
+    if (status === "unpaid") els.paymentPaidAmount.value = 0;
+  }
+
+  function syncPaymentStatusFromAmounts() {
+    if (!els.paymentEditStatus) return;
+    els.paymentEditStatus.value = paymentStatusFromAmounts(els.paymentMonthlyFee?.value, els.paymentPaidAmount?.value);
+  }
+
+  function resetPaymentForm() {
+    if (!els.paymentForm) return;
+    state.editingPaymentId = null;
+    if (els.paymentId) els.paymentId.value = "";
+    if (els.paymentStudent) els.paymentStudent.disabled = false;
+    if (els.paymentPaidAmount) els.paymentPaidAmount.value = "";
+    if (els.paymentPeriodMonth) els.paymentPeriodMonth.value = els.paymentMonthFilter?.value || monthValue();
+    if (els.paymentDate) els.paymentDate.value = new Date().toISOString().slice(0, 10);
+    if (els.paymentMethod) els.paymentMethod.value = "";
+    if (els.paymentDescription) els.paymentDescription.value = "";
+    if (els.paymentEditStatus) els.paymentEditStatus.value = "partial";
+    if (els.savePaymentButton) els.savePaymentButton.textContent = "Ödeme Ekle";
+    els.cancelPaymentEditButton?.classList.add("hidden");
+    syncPaymentFee();
+  }
+
+  function startPaymentEdit(payment) {
+    if (!payment?.id) return;
+    state.editingPaymentId = payment.id;
+    if (els.paymentId) els.paymentId.value = payment.id;
+    if (els.paymentStudent) {
+      els.paymentStudent.value = String(payment.studentId || "");
+      els.paymentStudent.disabled = true;
+    }
+    if (els.paymentMonthlyFee) els.paymentMonthlyFee.value = Number(payment.monthlyFee || 0);
+    if (els.paymentPaidAmount) els.paymentPaidAmount.value = Number(payment.paidAmount || 0);
+    if (els.paymentEditStatus) els.paymentEditStatus.value = paymentStatus(payment);
+    if (els.paymentPeriodMonth) els.paymentPeriodMonth.value = monthInputValue(payment.periodMonth);
+    if (els.paymentDate) els.paymentDate.value = dateInputValue(payment.paymentDate);
+    if (els.paymentMethod) els.paymentMethod.value = payment.method || "";
+    if (els.paymentDescription) els.paymentDescription.value = payment.description || "";
+    if (els.savePaymentButton) els.savePaymentButton.textContent = "Ödemeyi Güncelle";
+    els.cancelPaymentEditButton?.classList.remove("hidden");
+    els.paymentForm?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function renderImportPreview() {
@@ -1902,19 +2027,12 @@
     els.loginUsername.value = localStorage.getItem("kulupasist.rememberedUsername") || localStorage.getItem("emba.rememberedUsername") || "";
     els.rememberMe.checked = Boolean(els.loginUsername.value);
     clearStudentForm();
+    resetPaymentForm();
     resetUserForm();
 
     try {
       const data = await api("/api/auth/me");
-      state.user = data.user;
-      showApp();
-      if (isSuperAdmin()) {
-        switchView("superAdminView");
-      } else {
-        if (!isCoach()) await loadSettings();
-        await loadStudents();
-        switchView("dashboardView");
-      }
+      showLoginWithExistingSession(data.user);
     } catch (_error) {
       showLogin();
     }
@@ -1957,6 +2075,18 @@
         switchView("dashboardView");
       }
     } catch (error) {
+      els.loginMessage.textContent = error.message;
+      els.loginMessage.classList.add("error");
+    }
+  });
+
+  els.continueSessionButton?.addEventListener("click", async () => {
+    try {
+      els.loginMessage.textContent = "";
+      els.loginMessage.classList.remove("error");
+      await continueExistingSession();
+    } catch (error) {
+      showLogin();
       els.loginMessage.textContent = error.message;
       els.loginMessage.classList.add("error");
     }
@@ -2162,6 +2292,10 @@
         await loadDashboard();
         setNotice("Ödeme silindi.");
       }
+      if (action === "edit-payment") {
+        const payment = buildPaymentRows().find((item) => String(item.id) === String(id));
+        startPaymentEdit(payment);
+      }
     } catch (error) {
       setNotice(error.message, true);
     }
@@ -2212,7 +2346,17 @@
   });
 
   els.paymentStudent.addEventListener("change", syncPaymentFee);
-  els.paymentMonthFilter.addEventListener("change", loadPayments);
+  els.paymentEditStatus?.addEventListener("change", applyPaymentStatusToAmount);
+  els.paymentMonthlyFee?.addEventListener("input", () => {
+    if (els.paymentEditStatus?.value === "paid") applyPaymentStatusToAmount();
+    else syncPaymentStatusFromAmounts();
+  });
+  els.paymentPaidAmount?.addEventListener("input", syncPaymentStatusFromAmounts);
+  els.cancelPaymentEditButton?.addEventListener("click", resetPaymentForm);
+  els.paymentMonthFilter.addEventListener("change", () => {
+    resetPaymentForm();
+    loadPayments();
+  });
   els.paymentSearch.addEventListener("input", renderPayments);
   els.paymentSearch.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -2228,26 +2372,28 @@
   els.paymentStatusFilter.addEventListener("change", renderPayments);
   els.paymentForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const id = els.paymentId?.value || "";
+    const payload = {
+      periodMonth: els.paymentPeriodMonth?.value || els.paymentMonthFilter.value,
+      monthlyFee: els.paymentMonthlyFee.value,
+      paidAmount: els.paymentPaidAmount.value,
+      status: els.paymentEditStatus?.value || "partial",
+      paymentDate: els.paymentDate.value,
+      method: els.paymentMethod.value.trim(),
+      description: els.paymentDescription.value.trim()
+    };
+    if (!id) payload.studentId = els.paymentStudent.value;
     try {
-      await api("/api/payments", {
-        method: "POST",
-        body: JSON.stringify({
-          studentId: els.paymentStudent.value,
-          periodMonth: els.paymentMonthFilter.value,
-          monthlyFee: els.paymentMonthlyFee.value,
-          paidAmount: els.paymentPaidAmount.value,
-          paymentDate: $("#paymentDate").value,
-          method: $("#paymentMethod").value.trim(),
-          description: $("#paymentDescription").value.trim()
-        })
+      await api(id ? `/api/payments/${id}` : "/api/payments", {
+        method: id ? "PATCH" : "POST",
+        body: JSON.stringify(payload)
       });
-      els.paymentPaidAmount.value = "";
-      $("#paymentDescription").value = "";
+      resetPaymentForm();
       await loadPayments();
       await loadDashboard();
-      setNotice("Ödeme kaydedildi.");
+      setNotice(id ? "Ödeme güncellendi." : "Ödeme kaydedildi.");
     } catch (error) {
-      setNotice(error.message, true);
+      setNotice(id ? "Ödeme güncellenirken hata oluştu." : error.message, true);
     }
   });
 
