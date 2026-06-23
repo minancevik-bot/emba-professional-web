@@ -52,7 +52,7 @@
   };
 
   const viewMeta = {
-    superAdminView: ["KulüpAsist Merkez", "Kulüp ve kullanıcı yönetim merkezi"],
+    superAdminView: ["Kulüp Asistanı Merkez", "Kulüp ve kullanıcı yönetim merkezi"],
     dashboardView: ["Yönetim Paneli", "Kulüp operasyonlarını tek ekrandan takip edin."],
     studentsView: ["Öğrenciler", "Kayıt, ders ve veli bilgilerini düzenleyin."],
     attendanceView: ["Yoklama", "Günlük ders katılımını hızlıca yönetin."],
@@ -406,7 +406,7 @@
   }
 
   function initials(value) {
-    const parts = String(value || "KulüpAsist").trim().split(/\s+/).filter(Boolean);
+    const parts = String(value || "Kulüp Asistanı").trim().split(/\s+/).filter(Boolean);
     return parts.slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase("tr-TR") || "KA";
   }
 
@@ -433,7 +433,7 @@
   }
 
   function userClubName(user) {
-    return user?.clubName || (user?.clubId ? `Kulüp #${user.clubId}` : "KulüpAsist Merkez");
+    return user?.clubName || (user?.clubId ? `Kulüp #${user.clubId}` : "Kulüp Asistanı Merkez");
   }
 
   function userDisplayLine(user) {
@@ -675,7 +675,7 @@
     const nameText = state.user.fullName || "";
     const role = normalizedRole();
     const userLabel = isSuperAdmin()
-      ? "Otomasyon Sorumlusu · KulüpAsist Merkez"
+      ? "Otomasyon Sorumlusu · Kulüp Asistanı Merkez"
       : (role === "manager" && isEmbaClubName(clubText))
         ? "MÜCAHİT ÜNAL · Kulüp Yetkilisi · EMBA Spor Kulübü"
         : [nameText, roleText, clubText].filter(Boolean).join(" · ");
@@ -1613,7 +1613,7 @@
         <button class="attendance-session-head" data-action="toggle-report-session" data-session-id="${escapeHtml(session.id)}" type="button">
           <div>
             <strong>${escapeHtml(timeRangeLabel(session.startTime))}</strong>
-            <span>${escapeHtml(session.clubName || currentClubName() || "KulüpAsist Merkez")}</span>
+            <span>${escapeHtml(session.clubName || currentClubName() || "Kulüp Asistanı Merkez")}</span>
           </div>
           <div class="attendance-session-metrics">
             <span>Toplam <strong>${Number(session.total || 0)}</strong></span>
@@ -1752,7 +1752,7 @@
       date: dateInputValue(session.lessonDate || els.reportDate.value),
       time: normalizeTimeValue(session.startTime),
       clubId: session.clubId || attendanceClearClubId(),
-      label: `${dateOnlyLabel(session.lessonDate || els.reportDate.value)} · ${timeRangeLabel(session.startTime)} · ${session.clubName || currentClubName() || "KulüpAsist"}`
+      label: `${dateOnlyLabel(session.lessonDate || els.reportDate.value)} · ${timeRangeLabel(session.startTime)} · ${session.clubName || currentClubName() || "Kulüp Asistanı"}`
     };
     if (els.attendanceResetSessionLabel) {
       els.attendanceResetSessionLabel.textContent = state.pendingAttendanceClearContext.label;
@@ -1776,7 +1776,7 @@
       date,
       time,
       clubId: attendanceClearClubId(),
-      label: `${dateOnlyLabel(date)} · ${timeRangeLabel(time)} · ${currentClubName() || "KulüpAsist"}`
+      label: `${dateOnlyLabel(date)} · ${timeRangeLabel(time)} · ${currentClubName() || "Kulüp Asistanı"}`
     };
     if (els.attendanceResetSessionLabel) els.attendanceResetSessionLabel.textContent = state.pendingAttendanceClearContext.label;
     if (els.attendanceResetConfirmInput) els.attendanceResetConfirmInput.value = "";
@@ -1833,7 +1833,7 @@
     const clubNames = Array.from(new Set(sessions.map((session) => session.clubName).filter(Boolean)));
     const clubName = clubNames.length === 1
       ? clubNames[0]
-      : (clubNames.length > 1 ? "Tüm Kulüpler" : (currentClubName() || "KulüpAsist"));
+      : (clubNames.length > 1 ? "Tüm Kulüpler" : (currentClubName() || "Kulüp Asistanı"));
     const attendanceRate = Number(totals.attendanceRate || 0);
     const printableSessions = sessions.slice(0, 3);
     while (printableSessions.length < 3) {
@@ -1892,8 +1892,8 @@
       <div class="print-report-page print-attendance-report">
         <header class="print-report-header">
           <div class="print-report-brand">
-            <p>KulüpAsist</p>
-            <h1>KULÜPASİST YOKLAMA RAPORU</h1>
+            <p>Kulüp Asistanı</p>
+            <h1>KULÜP ASİSTANI YOKLAMA RAPORU</h1>
             <strong>${escapeHtml(clubName)}</strong>
           </div>
           <div class="print-report-meta">
@@ -2312,13 +2312,13 @@
     const clubOptions = state.clubs.map((club) => `<option value="${club.id}">${escapeHtml(club.name)}</option>`).join("");
     if (els.userClubFilter) {
       const current = els.userClubFilter.value || "all";
-      els.userClubFilter.innerHTML = `<option value="all">Tüm kulüpler</option><option value="center">KulüpAsist Merkez</option>${clubOptions}`;
+      els.userClubFilter.innerHTML = `<option value="all">Tüm kulüpler</option><option value="center">Kulüp Asistanı Merkez</option>${clubOptions}`;
       els.userClubFilter.value = Array.from(els.userClubFilter.options).some((option) => option.value === current) ? current : "all";
       els.userClubFilter.disabled = !isSuperAdmin();
     }
     if (els.newUserClubId) {
       const current = els.newUserClubId.value || "";
-      els.newUserClubId.innerHTML = `<option value="">KulüpAsist Merkez</option>${clubOptions}`;
+      els.newUserClubId.innerHTML = `<option value="">Kulüp Asistanı Merkez</option>${clubOptions}`;
       els.newUserClubId.value = Array.from(els.newUserClubId.options).some((option) => option.value === current) ? current : "";
     }
   }

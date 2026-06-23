@@ -1,0 +1,1670 @@
+diff --git a/public/app.js b/public/app.js
+index b386639..30e5ab2 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -16,7 +16,9 @@
+     openStudentId: null,
+     activeView: "superAdminView",
+     pendingAttendanceTime: null,
++    attendanceTimesOpen: false,
+     searchTimer: null,
++    userSearchTimer: null,
+     studentSaving: false
+   };
+ 
+@@ -43,7 +45,7 @@
+     studentCreateView: ["Öğrenci Ekle", "Hızlı öğrenci kaydı oluşturun."],
+     paymentsView: ["Ödemeler", "Tahsilat, kalan bakiye ve WhatsApp takibini yapın."],
+     importView: ["Toplu İçe Aktar", "Excel listesini önce önizleyin, sonra onaylayarak aktarın."],
+-    usersView: ["Kullanıcılar", "Rol ve durum bilgilerini kulüp bazında izleyin."],
++    usersView: ["Kullanıcılar", "Otomasyon ve kulüp kullanıcılarını tek yerden yönetin."],
+     backupView: ["Raporlar", "Yedekler ve işlem kayıtlarını kontrol edin."]
+   };
+ 
+@@ -104,6 +106,11 @@
+     cancelStudentButton: $("#cancelStudentButton"),
+     attendanceDate: $("#attendanceDate"),
+     attendanceSlotTime: $("#attendanceSlotTime"),
++    attendanceTimePicker: $("#attendanceTimePicker"),
++    attendanceTimeToggle: $("#attendanceTimeToggle"),
++    attendanceSelectedTime: $("#attendanceSelectedTime"),
++    attendanceTimeSummary: $("#attendanceTimeSummary"),
++    attendanceTimePanel: $("#attendanceTimePanel"),
+     attendanceTimeGrid: $("#attendanceTimeGrid"),
+     attendanceCardSearch: $("#attendanceCardSearch"),
+     attendanceUnmarkedCount: $("#attendanceUnmarkedCount"),
+@@ -141,11 +148,19 @@
+     importPreviewTable: $("#importPreviewTable"),
+     userForm: $("#userForm"),
+     userTable: $("#userTable"),
++    userSearch: $("#userSearch"),
++    userSearchButton: $("#userSearchButton"),
++    userSearchClearButton: $("#userSearchClearButton"),
++    userRoleFilter: $("#userRoleFilter"),
++    userClubFilter: $("#userClubFilter"),
++    newUserButton: $("#newUserButton"),
+     editUserId: $("#editUserId"),
+     newUserRole: $("#newUserRole"),
++    newUserClubId: $("#newUserClubId"),
+     coachScopeHint: $("#coachScopeHint"),
+     newUserActive: $("#newUserActive"),
+     newUserPassword: $("#newUserPassword"),
++    newUserPasswordConfirm: $("#newUserPasswordConfirm"),
+     saveUserButton: $("#saveUserButton"),
+     cancelUserEditButton: $("#cancelUserEditButton"),
+     runBackupButton: $("#runBackupButton"),
+@@ -303,6 +318,23 @@
+     return `<span class="role-badge role-${escapeHtml(String(role || "viewer").replace("_", "-"))}">${escapeHtml(label || role || "viewer")}</span>`;
+   }
+ 
++  function isEmbaClubName(value) {
++    return String(value || "").toLocaleLowerCase("tr-TR").includes("emba");
++  }
++
++  function userClubName(user) {
++    return user?.clubName || (user?.clubId ? `Kulüp #${user.clubId}` : "KulüpAsist Merkez");
++  }
++
++  function userDisplayLine(user) {
++    const role = user?.roleLabel || user?.normalizedRole || user?.role || "";
++    return [user?.fullName || user?.username || "-", role, userClubName(user)].filter(Boolean).join(" | ");
++  }
++
++  function userDateLabel(user) {
++    return dateLabel(user?.updatedAt || user?.updated_at || user?.createdAt || user?.created_at);
++  }
++
+   function emptyState(title, text) {
+     return `
+       <div class="empty-state">
+@@ -335,7 +367,6 @@
+       "/api/payments",
+       "/api/attendance",
+       "/api/import",
+-      "/api/users",
+       "/api/audit-logs",
+       "/api/backups"
+     ].some((prefix) => url.startsWith(prefix));
+@@ -487,9 +518,12 @@
+     const clubText = currentClubName();
+     const roleText = state.user.roleLabel || state.user.role || "";
+     const nameText = state.user.fullName || "";
++    const role = normalizedRole();
+     const userLabel = isSuperAdmin()
+       ? "Otomasyon Sorumlusu · KulüpAsist Merkez"
+-      : [nameText, roleText, clubText].filter(Boolean).join(" · ");
++      : (role === "manager" && isEmbaClubName(clubText))
++        ? "MÜCAHİT ÜNAL · Kulüp Yetkilisi · EMBA Spor Kulübü"
++        : [nameText, roleText, clubText].filter(Boolean).join(" · ");
+     els.userBadge.innerHTML = `<strong>${escapeHtml(userLabel || `${roleText} · ${clubText || ""}`)}</strong>`;
+     state.activeView = isSuperAdmin() ? "superAdminView" : "dashboardView";
+     updateRoleMenuLabels();
+@@ -501,7 +535,8 @@
+     const superAdminMode = isSuperAdmin();
+     const clubSelected = hasSelectedClub();
+     $$("[data-permission]").forEach((element) => {
+-      const operationalNav = element.classList.contains("nav-button") && superAdminMode && !clubSelected;
++      const centerAllowed = element.dataset.view === "usersView";
++      const operationalNav = element.classList.contains("nav-button") && superAdminMode && !clubSelected && !centerAllowed;
+       element.classList.toggle("hidden", !can(element.dataset.permission) || operationalNav);
+     });
+     $$("[data-super-admin-only]").forEach((element) => {
+@@ -546,7 +581,8 @@
+   }
+ 
+   function switchView(viewId) {
+-    if (isSuperAdmin() && !state.selectedClub && viewId !== "superAdminView") {
++    const centerAllowedView = viewId === "superAdminView" || viewId === "usersView";
++    if (isSuperAdmin() && !state.selectedClub && !centerAllowedView) {
+       setNotice("Önce üst yönetim panelinden bir kulüp seçin.", true);
+       viewId = "superAdminView";
+     }
+@@ -1133,17 +1169,19 @@
+     state.attendanceSlots = slotsData.slots || [];
+     const slotCounts = new Map(state.attendanceSlots.map((slot) => [normalizeTimeValue(slot.time), Number(slot.studentCount || 0)]));
+     const firstActiveSlot = state.attendanceSlots.map((slot) => normalizeTimeValue(slot.time)).find(Boolean);
+-    const currentTime = normalizeTimeValue(state.pendingAttendanceTime || els.attendanceSlotTime.value) || firstActiveSlot || lessonTimes[0];
++    const currentTime = normalizeTimeValue(state.pendingAttendanceTime || els.attendanceSlotTime.value) || firstActiveSlot || "";
+     state.pendingAttendanceTime = null;
+-    els.attendanceSlotTime.innerHTML = lessonTimes
++    els.attendanceSlotTime.innerHTML = [`<option value="">Saat seçiniz</option>`, ...lessonTimes
+       .map((time) => {
+         const count = slotCounts.get(time) || 0;
+         const label = count ? `${time} · ${count} öğrenci` : time;
+         return `<option value="${time}">${escapeHtml(label)}</option>`;
+       })
+-      .join("");
++    ].join("");
+     if (currentTime && lessonTimes.includes(currentTime)) {
+       els.attendanceSlotTime.value = currentTime;
++    } else {
++      els.attendanceSlotTime.value = "";
+     }
+     renderAttendanceTimeGrid();
+     await loadLessonAttendance();
+@@ -1169,11 +1207,28 @@
+     if (!els.attendanceTimeGrid) return;
+     const selected = normalizeTimeValue(els.attendanceSlotTime.value);
+     const slotCounts = new Map(state.attendanceSlots.map((slot) => [normalizeTimeValue(slot.time), Number(slot.studentCount || 0)]));
++    const selectedCount = selected ? (slotCounts.get(selected) || 0) : 0;
++    if (els.attendanceSelectedTime) {
++      els.attendanceSelectedTime.textContent = selected || "Saat seçiniz";
++    }
++    if (els.attendanceTimeSummary) {
++      const filledSlots = state.attendanceSlots.filter((slot) => Number(slot.studentCount || 0) > 0).length;
++      els.attendanceTimeSummary.textContent = selected
++        ? `${selectedCount} öğrenci · başka saat seçmek için açın`
++        : `${filledSlots} dolu saat · saat seçmek için açın`;
++    }
++    if (els.attendanceTimePanel) {
++      els.attendanceTimePanel.classList.toggle("hidden", !state.attendanceTimesOpen);
++    }
++    if (els.attendanceTimeToggle) {
++      els.attendanceTimeToggle.setAttribute("aria-expanded", state.attendanceTimesOpen ? "true" : "false");
++      els.attendanceTimeToggle.classList.toggle("active", Boolean(selected));
++    }
+     els.attendanceTimeGrid.innerHTML = lessonTimes.map((time) => {
+       const count = slotCounts.get(time) || 0;
+       const activeClass = time === selected ? " active" : "";
+-      const countLabel = count ? `<span>${count}</span>` : "";
+-      return `<button class="time-chip${activeClass}" data-action="select-attendance-time" data-time="${time}" type="button">${time}${countLabel}</button>`;
++      const emptyClass = count ? "" : " empty";
++      return `<button class="time-chip${activeClass}${emptyClass}" data-action="select-attendance-time" data-time="${time}" type="button"><strong>${time}</strong><span>${count} öğrenci</span></button>`;
+     }).join("");
+   }
+ 
+@@ -1492,44 +1547,78 @@
+ 
+   async function loadUsers() {
+     if (!can("users:read")) return;
+-    if (isSuperAdmin() && !state.selectedClub) {
+-      switchView("superAdminView");
+-      return;
++    if (isSuperAdmin() && !state.clubs.length) {
++      await loadClubs();
+     }
+-    const data = await api("/api/users");
++    populateUserClubControls();
++    const params = new URLSearchParams();
++    const search = (els.userSearch?.value || "").trim();
++    const role = els.userRoleFilter?.value || "all";
++    const club = els.userClubFilter?.value || "all";
++    if (search) params.set("search", search);
++    if (role !== "all") params.set("role", role);
++    if (club !== "all") params.set("clubId", club);
++    const query = params.toString();
++    const data = await api(`/api/users${query ? `?${query}` : ""}`);
+     const users = data.users || [];
+     els.userTable.innerHTML = users.length
+       ? users.map((user) => `
+           <tr>
+-            <td data-label="Kullanıcı adı"><strong>${escapeHtml(user.username)}</strong></td>
+-            <td data-label="Ad soyad">${escapeHtml(user.fullName)}</td>
++            <td data-label="Ad Soyad"><strong>${escapeHtml(user.fullName || "-")}</strong><br><span class="muted">${escapeHtml(userDisplayLine(user))}</span></td>
++            <td data-label="Kullanıcı adı / e-posta">${escapeHtml(user.username || "-")}</td>
+             <td data-label="Rol">${roleBadge(user.normalizedRole || user.role, user.roleLabel)}</td>
++            <td data-label="Bağlı Kulüp">${escapeHtml(userClubName(user))}</td>
+             <td data-label="Durum">${user.active ? statusBadge("Aktif") : statusBadge("Pasif")}</td>
+-            <td data-label="Kulüp">${escapeHtml(user.clubId ? `Kulüp #${user.clubId}` : "-")}</td>
+-            <td data-label="Yetki özeti">${escapeHtml((user.permissions || []).slice(0, 4).join(", "))}${(user.permissions || []).length > 4 ? "..." : ""}</td>
+-            <td data-label="İşlem">
++            <td data-label="Son işlem">${escapeHtml(userDateLabel(user) || "-")}</td>
++            <td data-label="İşlemler">
+               <div class="actions">
+                 <button class="small-button secondary" data-action="edit-user" data-id="${user.id}" type="button">Düzenle</button>
+                 <button class="small-button ${user.active ? "danger" : ""}" data-action="toggle-user-active" data-id="${user.id}" data-active="${user.active ? "false" : "true"}" type="button">${user.active ? "Pasif Yap" : "Aktif Yap"}</button>
++                <button class="small-button danger" data-action="soft-delete-user" data-id="${user.id}" type="button">Sil</button>
+               </div>
+             </td>
+           </tr>
+         `).join("")
+-      : emptyRow(7, "Kullanıcı bulunamadı.", "Bu kulüp için kullanıcı kaydı görünmüyor.");
++      : emptyRow(7, "Kullanıcı bulunamadı.", "Arama veya filtre kriterlerini değiştirerek tekrar deneyin.");
+     state.users = users;
+     updateUserRoleOptions();
+   }
+ 
++  function populateUserClubControls() {
++    const clubOptions = state.clubs.map((club) => `<option value="${club.id}">${escapeHtml(club.name)}</option>`).join("");
++    if (els.userClubFilter) {
++      const current = els.userClubFilter.value || "all";
++      els.userClubFilter.innerHTML = `<option value="all">Tüm kulüpler</option><option value="center">KulüpAsist Merkez</option>${clubOptions}`;
++      els.userClubFilter.value = Array.from(els.userClubFilter.options).some((option) => option.value === current) ? current : "all";
++      els.userClubFilter.disabled = !isSuperAdmin();
++    }
++    if (els.newUserClubId) {
++      const current = els.newUserClubId.value || "";
++      els.newUserClubId.innerHTML = `<option value="">KulüpAsist Merkez</option>${clubOptions}`;
++      els.newUserClubId.value = Array.from(els.newUserClubId.options).some((option) => option.value === current) ? current : "";
++    }
++  }
++
+   function updateUserRoleOptions() {
+     if (!els.newUserRole) return;
+     const allowed = isSuperAdmin()
+-      ? ["coach", "assistant", "viewer", "coordinator", "manager"]
++      ? ["super_admin", "manager", "coordinator", "coach", "assistant", "viewer"]
+       : (normalizedRole() === "manager" ? ["manager", "coach", "assistant"] : ["coach", "assistant"]);
+     Array.from(els.newUserRole.options).forEach((option) => {
+       option.hidden = !allowed.includes(option.value);
+       option.disabled = !allowed.includes(option.value);
+     });
+     if (!allowed.includes(els.newUserRole.value)) els.newUserRole.value = allowed[0];
++    if (els.newUserClubId) {
++      const role = els.newUserRole.value;
++      const clubRequired = role !== "super_admin";
++      els.newUserClubId.required = clubRequired && isSuperAdmin();
++      els.newUserClubId.disabled = !isSuperAdmin();
++      if (!isSuperAdmin()) {
++        els.newUserClubId.value = String(state.user?.clubId || "");
++      }
++      if (role === "super_admin") els.newUserClubId.value = "";
++    }
+     updateCoachScopeHint();
+   }
+ 
+@@ -1547,6 +1636,13 @@
+       els.newUserPassword.value = "";
+       els.newUserPassword.required = true;
+     }
++    if (els.newUserPasswordConfirm) {
++      els.newUserPasswordConfirm.value = "";
++      els.newUserPasswordConfirm.required = true;
++    }
++    if (els.newUserClubId && !isSuperAdmin()) {
++      els.newUserClubId.value = String(state.user?.clubId || "");
++    }
+     if (els.saveUserButton) els.saveUserButton.textContent = "Kullanıcı Ekle";
+     els.cancelUserEditButton?.classList.add("hidden");
+     updateUserRoleOptions();
+@@ -1560,11 +1656,16 @@
+     if (usernameInput) usernameInput.value = user.username || "";
+     if (fullNameInput) fullNameInput.value = user.fullName || "";
+     if (els.newUserRole) els.newUserRole.value = user.normalizedRole || user.role || "coach";
++    if (els.newUserClubId) els.newUserClubId.value = user.clubId ? String(user.clubId) : "";
+     if (els.newUserActive) els.newUserActive.value = user.active ? "true" : "false";
+     if (els.newUserPassword) {
+       els.newUserPassword.value = "";
+       els.newUserPassword.required = false;
+     }
++    if (els.newUserPasswordConfirm) {
++      els.newUserPasswordConfirm.value = "";
++      els.newUserPasswordConfirm.required = false;
++    }
+     if (els.saveUserButton) els.saveUserButton.textContent = "Kullanıcıyı Güncelle";
+     els.cancelUserEditButton?.classList.remove("hidden");
+     updateUserRoleOptions();
+@@ -1795,8 +1896,13 @@
+       if (action === "manage-club") await selectClub(id);
+       if (action === "edit-student") openStudentEditor(state.students.find((student) => String(student.id) === String(id)));
+       if (action === "mark-attendance") markLessonAttendance(id, button.dataset.status);
++      if (action === "toggle-attendance-times") {
++        state.attendanceTimesOpen = !state.attendanceTimesOpen;
++        renderAttendanceTimeGrid();
++      }
+       if (action === "select-attendance-time") {
+         els.attendanceSlotTime.value = button.dataset.time || "";
++        state.attendanceTimesOpen = false;
+         await loadLessonAttendance();
+       }
+       if (action === "open-attendance-slot") {
+@@ -1813,14 +1919,32 @@
+         await api(`/api/users/${id}`, {
+           method: "PATCH",
+           body: JSON.stringify({
++            username: user.username,
+             fullName: user.fullName,
+             role: user.normalizedRole || user.role,
++            clubId: user.clubId || null,
+             active
+           })
+         });
+         await loadUsers();
+         setNotice("Kullanıcı durumu güncellendi.");
+       }
++      if (action === "soft-delete-user") {
++        const user = state.users.find((item) => String(item.id) === String(id));
++        if (!user || !window.confirm("Bu kullanıcıyı silmek/pasife almak istediğinize emin misiniz?")) return;
++        await api(`/api/users/${id}`, {
++          method: "PATCH",
++          body: JSON.stringify({
++            username: user.username,
++            fullName: user.fullName,
++            role: user.normalizedRole || user.role,
++            clubId: user.clubId || null,
++            active: false
++          })
++        });
++        await loadUsers();
++        setNotice("Kullanıcı güvenli şekilde pasife alındı.");
++      }
+       if (action === "delete-student" && window.confirm("Bu öğrenciyi silmek istediğinize emin misiniz?")) {
+         await api(`/api/students/${id}`, { method: "DELETE" });
+         await loadStudents();
+@@ -1923,6 +2047,7 @@
+   });
+ 
+   els.newUserRole?.addEventListener("change", updateCoachScopeHint);
++  els.newUserRole?.addEventListener("change", updateUserRoleOptions);
+ 
+   els.userForm.addEventListener("submit", async (event) => {
+     event.preventDefault();
+@@ -1932,9 +2057,18 @@
+         username: $("#newUsername").value.trim(),
+         fullName: $("#newUserFullName").value.trim(),
+         role: $("#newUserRole").value,
++        clubId: els.newUserClubId?.value || null,
+         active: els.newUserActive.value === "true"
+       };
+       const password = els.newUserPassword?.value || "";
++      const passwordConfirm = els.newUserPasswordConfirm?.value || "";
++      if (password || passwordConfirm) {
++        if (password !== passwordConfirm) {
++          setNotice("Şifre ve şifre tekrar eşleşmiyor.", true);
++          return;
++        }
++        body.passwordConfirm = passwordConfirm;
++      }
+       if (password) body.password = password;
+       await api(id ? `/api/users/${id}` : "/api/users", {
+         method: id ? "PATCH" : "POST",
+@@ -1949,6 +2083,23 @@
+   });
+ 
+   els.cancelUserEditButton.addEventListener("click", resetUserForm);
++  els.newUserButton?.addEventListener("click", () => {
++    resetUserForm();
++    els.userForm?.scrollIntoView({ behavior: "smooth", block: "start" });
++  });
++  els.userSearchButton?.addEventListener("click", loadUsers);
++  els.userSearchClearButton?.addEventListener("click", () => {
++    if (els.userSearch) els.userSearch.value = "";
++    if (els.userRoleFilter) els.userRoleFilter.value = "all";
++    if (els.userClubFilter) els.userClubFilter.value = "all";
++    loadUsers();
++  });
++  els.userSearch?.addEventListener("input", () => {
++    window.clearTimeout(state.userSearchTimer);
++    state.userSearchTimer = window.setTimeout(loadUsers, 300);
++  });
++  els.userRoleFilter?.addEventListener("change", loadUsers);
++  els.userClubFilter?.addEventListener("change", loadUsers);
+ 
+   els.runBackupButton.addEventListener("click", async () => {
+     try {
+diff --git a/public/index.html b/public/index.html
+index 1c94e42..2f2375c 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -44,6 +44,7 @@
+           <span id="loginMessage" class="form-message" aria-live="polite"></span>
+         </form>
+       </div>
++      <footer class="app-footer login-footer">KulüpAsist © 2026 · İnan Çevik</footer>
+     </section>
+ 
+     <div id="appShell" class="app-shell hidden">
+@@ -69,7 +70,7 @@
+           </div>
+         </button>
+         <nav aria-label="Ana menü">
+-          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Yönetim Paneli</span></button>
++          <button class="nav-button active" data-view="superAdminView" data-super-admin-only="true"><span>Otomasyon Yönetimi</span></button>
+           <button class="nav-button" data-view="dashboardView" data-permission="dashboard:read"><span>Panel</span></button>
+           <button class="nav-button" data-view="studentsView" data-permission="students:read"><span>Öğrenciler</span></button>
+           <button class="nav-button" data-view="attendanceView" data-permission="attendance:read"><span>Yoklama</span></button>
+@@ -348,7 +349,18 @@
+             <div class="filter-row">
+               <input id="attendanceDate" type="date">
+               <select id="attendanceSlotTime" class="time-source-select"></select>
+-              <div id="attendanceTimeGrid" class="time-chip-grid" aria-label="Ders saatleri"></div>
++              <div id="attendanceTimePicker" class="time-picker">
++                <button id="attendanceTimeToggle" class="time-picker-toggle secondary" data-action="toggle-attendance-times" type="button" aria-expanded="false">
++                  <span>
++                    <strong id="attendanceSelectedTime">Saat seçiniz</strong>
++                    <small id="attendanceTimeSummary">Tarih seçildikten sonra ders saatleri listelenir</small>
++                  </span>
++                  <span class="time-picker-chevron" aria-hidden="true">⌄</span>
++                </button>
++                <div id="attendanceTimePanel" class="time-picker-panel hidden">
++                  <div id="attendanceTimeGrid" class="time-chip-grid" aria-label="Ders saatleri"></div>
++                </div>
++              </div>
+             </div>
+           </div>
+           <section class="panel">
+@@ -482,15 +494,39 @@
+           <div class="section-head">
+             <div>
+               <h2>Kullanıcılar</h2>
+-              <p>Rol ve durum bilgileri kulüp bazlı yönetilir.</p>
++              <p>Otomasyon ve kulüp kullanıcılarını role, kulübe ve duruma göre yönetin.</p>
+             </div>
++            <button id="newUserButton" type="button" data-requires="users:write">Yeni Kullanıcı Ekle</button>
+           </div>
++          <section class="panel user-filter-panel">
++            <div class="search-box user-search-box">
++              <input id="userSearch" type="search" placeholder="Ad soyad, kullanıcı adı, e-posta veya kulüp ara" autocomplete="off">
++              <button id="userSearchButton" type="button">Ara</button>
++              <button id="userSearchClearButton" class="secondary" type="button">Temizle</button>
++            </div>
++            <div class="filter-row">
++              <select id="userRoleFilter">
++                <option value="all">Tüm roller</option>
++                <option value="super_admin">Otomasyon Sorumlusu</option>
++                <option value="manager">Kulüp Yetkilisi</option>
++                <option value="coordinator">Koordinatör</option>
++                <option value="coach">Antrenör</option>
++                <option value="assistant">Yardımcı</option>
++                <option value="viewer">İzleyici</option>
++              </select>
++              <select id="userClubFilter">
++                <option value="all">Tüm kulüpler</option>
++                <option value="center">KulüpAsist Merkez</option>
++              </select>
++            </div>
++          </section>
+           <section class="panel">
+             <form id="userForm" class="inline-form">
+-              <label>Kullanıcı adı<input id="newUsername" autocomplete="username" required></label>
++              <label>Kullanıcı adı / e-posta<input id="newUsername" autocomplete="username" required></label>
+               <label>Ad soyad<input id="newUserFullName" autocomplete="name" required></label>
+               <input id="editUserId" type="hidden">
+-              <label>Rol<select id="newUserRole"><option value="coach">Antrenör</option><option value="assistant">Asistan</option><option value="viewer">İzleyici</option><option value="coordinator">Koordinatör</option><option value="manager">Kulüp Yetkilisi</option></select></label>
++              <label>Rol<select id="newUserRole"><option value="super_admin">Otomasyon Sorumlusu</option><option value="manager">Kulüp Yetkilisi</option><option value="coordinator">Koordinatör</option><option value="coach">Antrenör</option><option value="assistant">Yardımcı</option><option value="viewer">İzleyici</option></select></label>
++              <label>Bağlı kulüp<select id="newUserClubId"><option value="">KulüpAsist Merkez</option></select></label>
+               <div id="coachScopeHint" class="nested-fields scope-hint hidden">
+                 <strong>Antrenör yetki kapsamı</strong>
+                 <label class="check-row">
+@@ -501,13 +537,14 @@
+               </div>
+               <label>Durum<select id="newUserActive"><option value="true">Aktif</option><option value="false">Pasif</option></select></label>
+               <label>Şifre<input id="newUserPassword" type="password" autocomplete="new-password" minlength="8"></label>
++              <label>Şifre tekrar<input id="newUserPasswordConfirm" type="password" autocomplete="new-password" minlength="8"></label>
+               <button id="saveUserButton" type="submit" data-requires="users:write">Kullanıcı Ekle</button>
+               <button id="cancelUserEditButton" class="secondary hidden" type="button">İptal</button>
+             </form>
+           </section>
+           <div class="table-card">
+             <table class="responsive-table">
+-              <thead><tr><th>Kullanıcı adı</th><th>Ad soyad</th><th>Rol</th><th>Durum</th><th>Kulüp</th><th>Yetki özeti</th><th>İşlem</th></tr></thead>
++              <thead><tr><th>Ad Soyad</th><th>Kullanıcı adı / e-posta</th><th>Rol</th><th>Bağlı Kulüp</th><th>Durum</th><th>Son işlem</th><th>İşlemler</th></tr></thead>
+               <tbody id="userTable"></tbody>
+             </table>
+           </div>
+@@ -535,6 +572,7 @@
+             <div id="auditLogList" class="audit-list"></div>
+           </section>
+         </section>
++        <footer class="app-footer">KulüpAsist © 2026 · İnan Çevik</footer>
+       </main>
+     </div>
+ 
+diff --git a/public/styles.css b/public/styles.css
+index b9cb2f4..8cb1916 100644
+--- a/public/styles.css
++++ b/public/styles.css
+@@ -363,7 +363,7 @@ h3 {
+ .app-shell {
+   min-height: 100vh;
+   display: grid;
+-  grid-template-columns: 268px 1fr;
++  grid-template-columns: 292px 1fr;
+ }
+ 
+ .mobile-header {
+@@ -374,24 +374,26 @@ h3 {
+   position: sticky;
+   top: 0;
+   height: 100vh;
+-  padding: 18px;
++  padding: 20px 16px;
+   overflow-y: auto;
+-  background: var(--nav);
++  background: linear-gradient(180deg, var(--sidebar) 0%, var(--sidebar-soft) 100%);
+ }
+ 
+ .brand {
+-  display: grid;
+-  justify-items: start;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
+   gap: 10px;
+   width: 100%;
+-  min-height: 112px;
+-  padding-bottom: 18px;
+-  margin-bottom: 14px;
+-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
++  min-height: 104px;
++  padding: 0 0 18px;
++  margin-bottom: 18px;
++  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+   border-radius: 0;
+   background: transparent;
+   color: #fff;
+-  text-align: left;
++  text-align: center;
+   box-shadow: none;
+ }
+ 
+@@ -405,8 +407,8 @@ h3 {
+ 
+ .brand .app-logo img {
+   width: auto;
+-  max-width: 180px;
+-  max-height: 76px;
++  max-width: 190px;
++  max-height: 82px;
+   object-fit: contain;
+ }
+ 
+@@ -432,7 +434,7 @@ h3 {
+ }
+ 
+ .brand strong {
+-  font-size: 22px;
++  font-size: 20px;
+ }
+ 
+ .brand span {
+@@ -451,19 +453,32 @@ h3 {
+   align-items: center;
+   justify-content: flex-start;
+   min-height: 46px;
+-  background: rgba(255, 255, 255, 0.08);
+-  color: #fff;
++  border: 1px solid transparent;
++  border-radius: 14px;
++  padding: 0 14px;
++  background: transparent;
++  color: rgba(255, 255, 255, 0.78);
++  font-weight: 600;
+   text-align: left;
++  box-shadow: none;
+ }
+ 
+ .nav-button.active {
+-  background: #fff;
+-  color: var(--nav);
++  border-color: rgba(248, 113, 113, 0.25);
++  background: rgba(220, 38, 38, 0.16);
++  color: #fff;
++}
++
++.nav-button:hover {
++  background: rgba(255, 255, 255, 0.08);
++  color: #fff;
++  transform: none;
+ }
+ 
+ .content {
+   min-width: 0;
+-  padding: 22px 24px 56px;
++  width: min(1440px, 100%);
++  padding: 24px 24px 56px;
+ }
+ 
+ .topbar {
+@@ -471,10 +486,12 @@ h3 {
+   align-items: center;
+   justify-content: space-between;
+   gap: 18px;
+-  margin: -22px -24px 20px;
+-  padding: 19px 24px;
++  min-height: 72px;
++  margin: -24px -24px 22px;
++  padding: 18px 24px;
+   border-bottom: 1px solid var(--line);
+-  background: rgba(255, 255, 255, 0.96);
++  background: rgba(255, 255, 255, 0.78);
++  backdrop-filter: blur(10px);
+ }
+ 
+ .page-title-block p {
+@@ -1497,3 +1514,801 @@ tbody tr:hover {
+     width: 100%;
+   }
+ }
++
++/* Modern SaaS panel refinements */
++.login-view {
++  background:
++    radial-gradient(circle at 18% 16%, rgba(37, 99, 235, 0.16), transparent 32%),
++    linear-gradient(135deg, #0f172a 0%, #111827 100%);
++}
++
++.login-shell {
++  border-radius: 28px;
++  border-color: rgba(255, 255, 255, 0.14);
++  box-shadow: 0 34px 90px rgba(15, 23, 42, 0.42);
++}
++
++.login-brand-panel {
++  background:
++    linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.96) 100%);
++}
++
++.login-logo {
++  min-height: 118px;
++  padding: 18px 22px;
++  border: 1px solid rgba(229, 231, 235, 0.9);
++  border-radius: 24px;
++  background: #fff;
++  box-shadow: var(--shadow-soft);
++}
++
++.login-logo img {
++  max-width: 220px;
++  max-height: 90px;
++}
++
++.login-panel {
++  gap: 18px;
++}
++
++.primary-action {
++  background: var(--primary);
++  color: #fff;
++  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.22);
++}
++
++.primary-action:hover {
++  background: var(--primary-hover);
++}
++
++.mobile-header {
++  min-height: 68px;
++}
++
++.mobile-brand-home img {
++  max-height: 42px;
++  object-fit: contain;
++}
++
++.brand .app-logo {
++  min-height: 82px;
++}
++
++.brand .app-logo img {
++  max-width: 190px;
++  max-height: 82px;
++}
++
++.topbar {
++  box-shadow: 0 1px 0 rgba(229, 231, 235, 0.75);
++}
++
++.top-title-logo {
++  padding: 0;
++}
++
++.top-title-logo img,
++.top-title-logo .fallback-logo {
++  width: 88px;
++  height: 88px;
++  max-width: 88px;
++  max-height: 88px;
++  padding: 10px;
++  border: 1px solid var(--border);
++  border-radius: 20px;
++  background: #fff;
++  object-fit: contain;
++  box-shadow: var(--shadow-soft);
++}
++
++.section-logo-title img,
++.section-logo-title .fallback-logo {
++  width: auto;
++  max-width: 230px;
++  max-height: 86px;
++  object-fit: contain;
++}
++
++.top-club-logo img,
++.top-club-logo .fallback-logo {
++  width: 52px;
++  height: 52px;
++  padding: 6px;
++  border-radius: 16px;
++  box-shadow: var(--shadow-soft);
++}
++
++.user-area .user-badge,
++#clubContextLabel.user-badge {
++  min-height: 40px;
++  padding: 8px 14px;
++  border: 1px solid var(--border);
++  background: #fff;
++  color: var(--text);
++  box-shadow: var(--shadow-soft);
++  font-size: 13px;
++  font-weight: 700;
++}
++
++.user-badge span {
++  color: var(--muted);
++}
++
++.dashboard-hero,
++.panel,
++.detail-panel,
++.metric-card,
++.table-card,
++.club-card,
++.form-section,
++.empty-state,
++.section-head {
++  border: 1px solid var(--border);
++  background: var(--surface);
++  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
++}
++
++.dashboard-hero,
++.section-head {
++  border-radius: 24px;
++  background: linear-gradient(135deg, #ffffff 0%, var(--surface-soft) 100%);
++  box-shadow: var(--shadow-soft);
++}
++
++.dashboard-hero {
++  grid-template-columns: 112px 1fr auto;
++  gap: 22px;
++  padding: 22px 24px;
++  margin-bottom: 22px;
++}
++
++.dashboard-hero img,
++.dashboard-hero .fallback-logo {
++  width: 88px;
++  height: 88px;
++  padding: 10px;
++  border: 1px solid var(--border);
++  border-radius: 20px;
++  background: #fff;
++  object-fit: contain;
++}
++
++.section-head {
++  padding: 22px 24px;
++  margin-bottom: 22px;
++}
++
++.section-head h2 {
++  margin-bottom: 5px;
++}
++
++.panel,
++.detail-panel,
++.metric-card,
++.club-card,
++.form-section {
++  border-radius: var(--radius-lg);
++}
++
++.panel,
++.detail-panel {
++  padding: 20px;
++  margin-bottom: 18px;
++}
++
++.metric-grid,
++.dashboard-grid,
++.club-grid {
++  gap: 18px;
++  margin-bottom: 18px;
++}
++
++.metric-card {
++  min-height: 136px;
++  padding: 20px;
++  overflow: hidden;
++  transition: transform 160ms ease, box-shadow 160ms ease;
++}
++
++.panel,
++.detail-panel,
++.metric-card,
++.club-card,
++.table-card {
++  transition: transform 160ms ease, box-shadow 160ms ease;
++}
++
++.panel:hover,
++.detail-panel:hover,
++.metric-card:hover,
++.club-card:hover,
++.table-card:hover {
++  transform: translateY(-1px);
++  box-shadow: var(--shadow);
++}
++
++.metric-card span {
++  color: var(--muted);
++  letter-spacing: 0;
++  text-transform: uppercase;
++}
++
++.metric-card strong {
++  color: var(--text);
++  font-size: 32px;
++  font-weight: 800;
++  font-variant-numeric: tabular-nums;
++}
++
++.metric-card::before {
++  width: 4px;
++  background: var(--primary);
++}
++
++.form-section {
++  padding: 18px;
++  background: var(--surface-soft);
++}
++
++.form-grid,
++.lesson-grid,
++.inline-form,
++.stack-form,
++.nested-fields {
++  gap: 16px;
++}
++
++textarea,
++input,
++select {
++  min-height: 44px;
++  border-color: #d1d5db;
++  border-radius: var(--radius-sm);
++  background: #fff;
++}
++
++button,
++.small-button,
++.row-menu summary {
++  min-height: 44px;
++  border-radius: var(--radius-sm);
++}
++
++.small-button {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  gap: 6px;
++  padding: 0 14px;
++  font-size: 13px;
++}
++
++.row-menu summary {
++  padding: 0 14px;
++  background: var(--sidebar);
++}
++
++.search-box {
++  grid-template-columns: minmax(180px, 1fr) auto auto;
++  gap: 10px;
++  width: min(520px, 100%);
++  padding: 12px;
++  border: 1px solid var(--border);
++  border-radius: 18px;
++  background: #fff;
++  box-shadow: var(--shadow-soft);
++}
++
++.search-box button {
++  min-height: 44px;
++}
++
++.table-card {
++  overflow: hidden;
++  border-radius: 20px;
++  background: #fff;
++  box-shadow: var(--shadow-soft);
++}
++
++.table-card table {
++  min-width: 980px;
++}
++
++th,
++td {
++  padding: 14px 16px;
++  border-bottom-color: #eef2f7;
++}
++
++th {
++  background: var(--surface-soft);
++  color: #374151;
++  font-size: 12px;
++  font-weight: 800;
++  letter-spacing: 0;
++}
++
++tbody tr:hover {
++  background: #fafafa;
++}
++
++.student-row strong,
++.lesson-card strong {
++  color: var(--text);
++  font-size: 15px;
++  font-weight: 800;
++}
++
++.record-code,
++.soft-pill,
++.badge,
++.role-badge {
++  border-radius: 999px;
++}
++
++.record-code {
++  background: #fef2f2;
++  color: var(--primary);
++}
++
++.status-row,
++.audit-item,
++.compact-item,
++.attendance-card {
++  padding: 14px;
++  border-radius: var(--radius-md);
++  background: #fff;
++  box-shadow: var(--shadow-soft);
++}
++
++.attendance-toolbar,
++.coach-actions {
++  padding: 12px;
++  border: 1px solid var(--border);
++  border-radius: 18px;
++  background: var(--surface-soft);
++}
++
++.attendance-toolbar input {
++  max-width: 420px;
++}
++
++.time-source-select {
++  position: absolute;
++  width: 1px;
++  height: 1px;
++  min-height: 1px;
++  padding: 0;
++  border: 0;
++  opacity: 0;
++  pointer-events: none;
++}
++
++.time-chip-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
++  gap: 8px;
++  width: min(720px, 100%);
++}
++
++.time-chip {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  gap: 6px;
++  min-width: 76px;
++  min-height: 40px;
++  height: 40px;
++  border: 1px solid var(--border);
++  border-radius: var(--radius-sm);
++  background: #fff;
++  color: var(--text);
++  box-shadow: none;
++  font-weight: 800;
++}
++
++.time-chip:hover {
++  border-color: rgba(220, 38, 38, 0.45);
++  background: #fff5f5;
++  color: var(--primary);
++  box-shadow: none;
++}
++
++.time-chip.active {
++  border-color: var(--primary);
++  background: var(--primary);
++  color: #fff;
++  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.22);
++}
++
++.time-chip span {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  min-width: 20px;
++  height: 20px;
++  border-radius: 999px;
++  background: rgba(255, 255, 255, 0.18);
++  font-size: 11px;
++}
++
++.lesson-attendance-cards {
++  gap: 14px;
++}
++
++.lesson-card {
++  align-items: center;
++  background: #fff;
++}
++
++.lesson-card .attendance-actions {
++  gap: 8px;
++}
++
++.lesson-card .small-button {
++  min-width: 96px;
++  min-height: 42px;
++  border: 1px solid var(--border);
++  background: #fff;
++  color: var(--text);
++  box-shadow: none;
++}
++
++.lesson-card .small-button.good.selected {
++  border-color: var(--success);
++  background: var(--success);
++  color: #fff;
++  outline: none;
++}
++
++.lesson-card .small-button.danger.selected {
++  border-color: var(--danger);
++  background: var(--danger);
++  color: #fff;
++  outline: none;
++}
++
++.sticky-save {
++  bottom: 14px;
++  padding: 12px 0 0;
++}
++
++.sticky-save button {
++  min-width: 180px;
++}
++
++.empty-state {
++  min-height: 104px;
++  place-items: center;
++  border-style: dashed;
++  border-radius: 20px;
++  text-align: center;
++}
++
++.empty-row td {
++  padding: 24px;
++  text-align: center;
++}
++
++.loading-view {
++  min-height: 100vh;
++  background:
++    linear-gradient(135deg, rgba(245, 247, 251, 0.96), rgba(249, 250, 251, 0.98));
++}
++
++.loading-card {
++  position: relative;
++  overflow: hidden;
++  border-radius: 24px;
++}
++
++.loading-card::before {
++  content: "KulüpAsist";
++  position: absolute;
++  inset: auto 0 64px;
++  color: var(--sidebar);
++  font-size: 44px;
++  font-weight: 900;
++  opacity: 0.08;
++  text-align: center;
++  pointer-events: none;
++}
++
++.loading-card::after {
++  content: "";
++  width: 22px;
++  height: 22px;
++  border: 3px solid #e5e7eb;
++  border-top-color: var(--primary);
++  border-radius: 999px;
++  animation: spin 760ms linear infinite;
++}
++
++@keyframes spin {
++  to {
++    transform: rotate(360deg);
++  }
++}
++
++@media (max-width: 980px) {
++  .content {
++    width: 100%;
++    padding: 16px 12px 44px;
++  }
++
++  .section-head,
++  .dashboard-hero {
++    grid-template-columns: 1fr;
++    padding: 18px;
++  }
++
++  .section-head,
++  .filter-row,
++  .topbar-actions,
++  .top-title-logo,
++  .section-logo-title {
++    gap: 14px;
++  }
++
++  .top-title-logo img,
++  .top-title-logo .fallback-logo {
++    width: 72px;
++    height: 72px;
++    max-width: 72px;
++    max-height: 72px;
++  }
++
++  .search-box {
++    grid-template-columns: 1fr;
++    width: 100%;
++  }
++
++  .time-chip-grid {
++    width: 100%;
++    grid-template-columns: repeat(3, minmax(76px, 1fr));
++  }
++}
++
++@media (max-width: 760px) {
++  .login-shell {
++    border-radius: 0;
++  }
++
++  .login-logo {
++    min-height: 104px;
++  }
++
++  .mobile-header {
++    min-height: 64px;
++  }
++
++  .dashboard-hero img,
++  .dashboard-hero .fallback-logo {
++    width: 72px;
++    height: 72px;
++  }
++
++  .table-card {
++    overflow: visible;
++    border: 0;
++    border-radius: 0;
++    background: transparent;
++    box-shadow: none;
++  }
++
++  tbody tr {
++    border-radius: 18px;
++    box-shadow: var(--shadow-soft);
++  }
++
++  td {
++    padding: 13px 14px;
++  }
++
++  .time-chip-grid {
++    grid-template-columns: repeat(2, minmax(76px, 1fr));
++  }
++
++  .sticky-save {
++    position: sticky;
++    bottom: 8px;
++    padding: 10px 0;
++    background: linear-gradient(180deg, rgba(245, 247, 251, 0), var(--bg) 42%);
++  }
++
++  .sticky-save button,
++  .search-box button,
++  .filter-row button,
++  .form-actions button {
++    width: 100%;
++  }
++}
++
++/* Prompt follow-up refinements */
++.login-view {
++  align-content: center;
++  grid-template-rows: 1fr auto;
++  gap: 18px;
++}
++
++.app-footer {
++  width: 100%;
++  padding: 18px 4px 0;
++  color: var(--muted);
++  font-size: 12px;
++  font-weight: 600;
++  text-align: center;
++}
++
++.login-footer {
++  align-self: end;
++  color: rgba(255, 255, 255, 0.72);
++  padding-bottom: 18px;
++}
++
++.content > .app-footer {
++  margin-top: 28px;
++  border-top: 1px solid var(--border);
++}
++
++.dashboard-hero {
++  grid-template-columns: 136px 1fr auto;
++}
++
++.dashboard-hero img,
++.dashboard-hero .fallback-logo {
++  width: 112px;
++  height: 112px;
++  max-width: 112px;
++  max-height: 112px;
++  padding: 14px;
++  border-radius: 24px;
++  object-fit: contain;
++  box-shadow: var(--shadow-soft);
++}
++
++.dashboard-hero .fallback-logo {
++  font-size: 13px;
++  text-align: center;
++}
++
++.user-filter-panel {
++  display: grid;
++  grid-template-columns: minmax(280px, 1fr) auto;
++  align-items: center;
++  gap: 14px;
++}
++
++.user-search-box {
++  width: 100%;
++}
++
++.time-picker {
++  position: relative;
++  width: min(760px, 100%);
++}
++
++.time-picker-toggle {
++  width: 100%;
++  min-height: 58px;
++  justify-content: space-between;
++  padding: 10px 14px;
++  border: 1px solid var(--border);
++  border-radius: 16px;
++  background: #fff;
++  color: var(--text);
++  box-shadow: var(--shadow-soft);
++  text-align: left;
++}
++
++.time-picker-toggle:hover,
++.time-picker-toggle.active {
++  border-color: rgba(220, 38, 38, 0.36);
++  background: #fff;
++  color: var(--text);
++}
++
++.time-picker-toggle span:first-child {
++  display: grid;
++  gap: 2px;
++}
++
++.time-picker-toggle strong {
++  font-size: 15px;
++  font-weight: 800;
++}
++
++.time-picker-toggle small {
++  color: var(--muted);
++  font-size: 12px;
++  font-weight: 700;
++}
++
++.time-picker-chevron {
++  display: inline-grid;
++  place-items: center;
++  width: 32px;
++  height: 32px;
++  border-radius: 999px;
++  background: var(--surface-soft);
++  color: var(--primary);
++  font-size: 20px;
++}
++
++.time-picker-panel {
++  margin-top: 10px;
++  padding: 12px;
++  border: 1px solid var(--border);
++  border-radius: 18px;
++  background: #fff;
++  box-shadow: var(--shadow-soft);
++}
++
++.time-picker-panel.hidden {
++  display: none !important;
++}
++
++.time-chip-grid {
++  grid-template-columns: repeat(4, minmax(126px, 1fr));
++}
++
++.time-chip {
++  height: auto;
++  min-height: 58px;
++  flex-direction: column;
++  align-items: flex-start;
++  padding: 10px 12px;
++}
++
++.time-chip strong {
++  font-size: 16px;
++  line-height: 1;
++}
++
++.time-chip span {
++  width: auto;
++  min-width: 0;
++  height: auto;
++  padding: 3px 8px;
++  background: #f3f4f6;
++  color: var(--muted);
++  font-weight: 800;
++}
++
++.time-chip.active span {
++  background: rgba(255, 255, 255, 0.18);
++  color: #fff;
++}
++
++.time-chip.empty {
++  color: #6b7280;
++  background: #f9fafb;
++}
++
++.time-chip.empty span {
++  background: #e5e7eb;
++}
++
++@media (max-width: 980px) {
++  .dashboard-hero {
++    grid-template-columns: 1fr;
++  }
++
++  .user-filter-panel {
++    grid-template-columns: 1fr;
++  }
++
++  .time-picker {
++    width: 100%;
++  }
++
++  .time-chip-grid {
++    grid-template-columns: repeat(2, minmax(120px, 1fr));
++  }
++}
++
++@media (max-width: 520px) {
++  .time-chip-grid {
++    grid-template-columns: 1fr;
++  }
++}
+diff --git a/src/permissions.js b/src/permissions.js
+index f3f85aa..a8bf37d 100644
+--- a/src/permissions.js
++++ b/src/permissions.js
+@@ -77,6 +77,7 @@ const ROLE_PERMISSIONS = {
+ };
+ 
+ const USER_CREATABLE_ROLES = [
++  "super_admin",
+   "admin",
+   "koordinator",
+   "antrenor",
+@@ -89,6 +90,7 @@ const USER_CREATABLE_ROLES = [
+ ];
+ 
+ const DATABASE_ROLE_ALIASES = {
++  super_admin: "super_admin",
+   manager: "manager",
+   coordinator: "coordinator",
+   coach: "coach",
+@@ -137,7 +139,7 @@ function isCoach(user) {
+ function normalizeCreatableRole(role, actor) {
+   const requested = String(role || "").trim();
+   if (requested === "super_admin") {
+-    return null;
++    return actor && isSuperAdmin(actor) ? "super_admin" : null;
+   }
+   if (!USER_CREATABLE_ROLES.includes(requested)) return "viewer";
+   const normalized = DATABASE_ROLE_ALIASES[requested] || "viewer";
+diff --git a/src/server.js b/src/server.js
+index 4ff7060..12094ad 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -82,6 +82,8 @@ function publicUser(user) {
+     clubId: user.club_id || user.clubId || null,
+     clubName: user.club_name || user.clubName || null,
+     active: user.active,
++    createdAt: user.created_at || user.createdAt || null,
++    updatedAt: user.updated_at || user.updatedAt || null,
+     permissions: permissionsFor(normalizedRole)
+   };
+ }
+@@ -2084,17 +2086,40 @@ app.get(
+   "/api/users",
+   requireAuth,
+   requirePermission("users:read"),
+-  requireSelectedClubForSuperAdmin,
+   asyncHandler(async (request, response) => {
+     const params = [];
+     const filters = [];
+-    addTenantFilter(filters, params, request.user, "users");
+-    addClubManagedUserFilter(filters, params, request.user, "users");
++    if (isSuperAdmin(request.user)) {
++      const requestedClub = String(request.query.clubId || "all").trim();
++      if (requestedClub === "center") {
++        filters.push("users.club_id IS NULL");
++      } else {
++        const clubId = Number(requestedClub);
++        if (Number.isInteger(clubId) && clubId > 0) {
++          params.push(clubId);
++          filters.push(`users.club_id = $${params.length}`);
++        }
++      }
++    } else {
++      addTenantFilter(filters, params, request.user, "users");
++      addClubManagedUserFilter(filters, params, request.user, "users");
++    }
++    const roleFilter = String(request.query.role || "all").trim();
++    if (roleFilter !== "all") {
++      params.push(roleFilter);
++      filters.push(`users.role = $${params.length}`);
++    }
++    const search = nullableText(request.query.search);
++    if (search) {
++      params.push(`%${search}%`);
++      filters.push(`(users.full_name ILIKE $${params.length} OR users.username ILIKE $${params.length} OR clubs.name ILIKE $${params.length})`);
++    }
+     const { rows } = await query(
+-      `SELECT id, username, full_name, role, club_id, active, created_at, updated_at
++      `SELECT users.id, users.username, users.full_name, users.role, users.club_id, clubs.name AS club_name, users.active, users.created_at, users.updated_at
+        FROM users
++       LEFT JOIN clubs ON clubs.id = users.club_id
+        ${whereClause(filters)}
+-       ORDER BY lower(full_name)`,
++       ORDER BY clubs.name NULLS FIRST, lower(users.full_name)`,
+       params
+     );
+     response.json({ users: rows.map(publicUser) });
+@@ -2105,7 +2130,6 @@ app.post(
+   "/api/users",
+   requireAuth,
+   requirePermission("users:write"),
+-  requireSelectedClubForSuperAdmin,
+   asyncHandler(async (request, response) => {
+     const username = nullableText(request.body.username);
+     const fullName = nullableText(request.body.fullName);
+@@ -2119,23 +2143,52 @@ app.post(
+       return;
+     }
+     const password = String(request.body.password || "");
++    if (request.body.passwordConfirm !== undefined && password !== String(request.body.passwordConfirm || "")) {
++      response.status(400).json({ error: "Sifre ve sifre tekrar eslesmiyor." });
++      return;
++    }
+     if (!username || !fullName || password.length < 8) {
+       response.status(400).json({ error: "Kullanici adi, ad soyad ve en az 8 karakter sifre gerekir." });
+       return;
+     }
+     const passwordHash = await hashPassword(password);
+     const { rows } = await transaction(async (client) => {
+-      const clubId = await resolveWriteClubId(client, request);
++      const exists = await client.query("SELECT id FROM users WHERE lower(username) = lower($1)", [username]);
++      if (exists.rows[0]) {
++        const error = new Error("Bu kullanici adi/e-posta zaten kullaniliyor.");
++        error.status = 409;
++        throw error;
++      }
++      let clubId = null;
++      if (isSuperAdmin(request.user)) {
++        if (role !== "super_admin") {
++          clubId = Number(request.body.clubId);
++          if (!Number.isInteger(clubId) || clubId < 1) {
++            const error = new Error("Kulup yoneticisi/antrenor/yardimci kullanici icin bagli kulup secilmelidir.");
++            error.status = 400;
++            throw error;
++          }
++          const club = await client.query("SELECT id FROM clubs WHERE id = $1", [clubId]);
++          if (!club.rows[0]) {
++            const error = new Error("Secilen kulup bulunamadi.");
++            error.status = 404;
++            throw error;
++          }
++        }
++      } else {
++        clubId = getUserClubId(request.user) || await defaultClubId(client);
++      }
+       if (!isSuperAdmin(request.user) && !clubId) {
+         const error = new Error("Kulup baglantisi bulunamadi.");
+         error.status = 400;
+         throw error;
+       }
++      const active = request.body.active === undefined ? true : boolValue(request.body.active);
+       const result = await client.query(
+-        `INSERT INTO users (username, full_name, role, password_hash, club_id)
+-         VALUES ($1, $2, $3, $4, $5)
++        `INSERT INTO users (username, full_name, role, password_hash, club_id, active)
++         VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id, username, full_name, role, club_id, active, created_at, updated_at`,
+-        [username, fullName, role, passwordHash, clubId]
++        [username, fullName, role, passwordHash, clubId, active]
+       );
+       await audit(client, request, "create", "user", result.rows[0].id, null, publicUser(result.rows[0]));
+       return result;
+@@ -2148,16 +2201,24 @@ app.patch(
+   "/api/users/:id",
+   requireAuth,
+   requirePermission("users:write"),
+-  requireSelectedClubForSuperAdmin,
+   asyncHandler(async (request, response) => {
++    const username = nullableText(request.body.username);
+     const fullName = nullableText(request.body.fullName);
+     const role = normalizeCreatableRole(request.body.role, request.user);
+     if (!role) {
+       response.status(403).json({ error: "Bu rol icin yetkiniz yok." });
+       return;
+     }
+-    const active = request.body.active !== false;
++    const requestedActive = request.body.active;
+     const password = String(request.body.password || "");
++    if (request.body.passwordConfirm !== undefined && password !== String(request.body.passwordConfirm || "")) {
++      response.status(400).json({ error: "Sifre ve sifre tekrar eslesmiyor." });
++      return;
++    }
++    if (!username || !fullName) {
++      response.status(400).json({ error: "Kullanici adi/e-posta ve ad soyad zorunludur." });
++      return;
++    }
+     if (password && password.length < 8) {
+       response.status(400).json({ error: "Yeni sifre en az 8 karakter olmalidir." });
+       return;
+@@ -2175,6 +2236,7 @@ app.patch(
+       response.status(404).json({ error: "Kullanici bulunamadi." });
+       return;
+     }
++    const active = requestedActive === undefined ? beforeResult.rows[0].active !== false : boolValue(requestedActive);
+     if (!canManageClubUser(request.user, beforeResult.rows[0])) {
+       response.status(403).json({ error: "Bu kullanici uzerinde islem yapamazsiniz." });
+       return;
+@@ -2185,20 +2247,48 @@ app.patch(
+     }
+ 
+     const updated = await transaction(async (client) => {
++      const exists = await client.query(
++        "SELECT id FROM users WHERE lower(username) = lower($1) AND id <> $2",
++        [username, request.params.id]
++      );
++      if (exists.rows[0]) {
++        const error = new Error("Bu kullanici adi/e-posta zaten kullaniliyor.");
++        error.status = 409;
++        throw error;
++      }
++      let clubId = beforeResult.rows[0].club_id || null;
++      if (isSuperAdmin(request.user)) {
++        if (role === "super_admin") {
++          clubId = null;
++        } else {
++          clubId = Number(request.body.clubId);
++          if (!Number.isInteger(clubId) || clubId < 1) {
++            const error = new Error("Bu rol icin bagli kulup secilmelidir.");
++            error.status = 400;
++            throw error;
++          }
++          const club = await client.query("SELECT id FROM clubs WHERE id = $1", [clubId]);
++          if (!club.rows[0]) {
++            const error = new Error("Secilen kulup bulunamadi.");
++            error.status = 404;
++            throw error;
++          }
++        }
++      }
+       let result;
+       if (password) {
+         result = await client.query(
+-          `UPDATE users SET full_name = $1, role = $2, active = $3, password_hash = $4
+-           WHERE id = $5 AND ($6::bigint IS NULL OR club_id = $6)
++          `UPDATE users SET username = $1, full_name = $2, role = $3, club_id = $4, active = $5, password_hash = $6, updated_at = now()
++           WHERE id = $7 AND ($8::bigint IS NULL OR club_id = $8)
+            RETURNING id, username, full_name, role, club_id, active, created_at, updated_at`,
+-          [fullName, role, active, await hashPassword(password), request.params.id, beforeResult.rows[0].club_id]
++          [username, fullName, role, clubId, active, await hashPassword(password), request.params.id, beforeResult.rows[0].club_id]
+         );
+       } else {
+         result = await client.query(
+-          `UPDATE users SET full_name = $1, role = $2, active = $3
+-           WHERE id = $4 AND ($5::bigint IS NULL OR club_id = $5)
++          `UPDATE users SET username = $1, full_name = $2, role = $3, club_id = $4, active = $5, updated_at = now()
++           WHERE id = $6 AND ($7::bigint IS NULL OR club_id = $7)
+            RETURNING id, username, full_name, role, club_id, active, created_at, updated_at`,
+-          [fullName, role, active, request.params.id, beforeResult.rows[0].club_id]
++          [username, fullName, role, clubId, active, request.params.id, beforeResult.rows[0].club_id]
+         );
+       }
+       await audit(client, request, "update", "user", request.params.id, beforeResult.rows[0], publicUser(result.rows[0]));
