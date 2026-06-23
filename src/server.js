@@ -209,8 +209,8 @@ function canResetAttendanceSession(user) {
 }
 
 function validAttendanceResetConfirm(value) {
-  const normalized = String(value || "").trim().toLocaleUpperCase("tr-TR");
-  return ["SIFIRLA", "TEMIZLE", "TEMİZLE"].includes(normalized);
+  const normalized = String(value || "").trim().toLocaleUpperCase("tr-TR").replace(/İ/g, "I");
+  return ["SIFIRLA", "TEMIZLE"].includes(normalized);
 }
 
 function hasForbiddenClubOverride(request) {
@@ -227,6 +227,14 @@ function parseAttendanceSessionId(value) {
   const clubId = Number(parts[2]);
   if (!validDateOrNull(lessonDate) || !startTime || !Number.isInteger(clubId) || clubId <= 0) return null;
   return { lessonDate, startTime, clubId };
+}
+
+function attendanceClearClubId(request) {
+  const requestedClubId = getSelectedClubId(request);
+  if (isSuperAdmin(request.user)) return requestedClubId || request.user?.selectedClubId || null;
+  const clubId = getUserClubId(request.user);
+  if (requestedClubId && String(requestedClubId) !== String(clubId || "")) return null;
+  return clubId || null;
 }
 
 function whereClause(filters) {
@@ -1743,9 +1751,20 @@ app.post(
   requireSelectedClubForSuperAdmin,
   asyncHandler(async (request, response) => {
     const studentId = Number(request.body.studentId);
-    const periodMonth = normalizePeriodMonth(request.body.periodMonth);
-    const monthlyFee = numberValue(request.body.monthlyFee);
-    const paidAmount = numberValue(request.body.paidAmount);
+    const periodMonth = validPeriodMonth(request.body.periodMonth);
+    const monthlyFee = nonNegativeAmount(request.body.monthlyFee, 0);
+    let paidAmount = nonNegativeAmount(request.body.paidAmount, 0);
+    const paymentDate = validDateOrNull(request.body.paymentDate || today());
+    const status = String(request.body.status || "").trim();
+    if (!Number.isInteger(studentId) || studentId <= 0) throw httpError("Gecerli ogrenci secilmelidir.", 400);
+    if (!periodMonth) throw httpError("Gecersiz ay/donem.", 400);
+    if (monthlyFee === null) throw httpError("Aylik ucret negatif veya gecersiz olamaz.", 400);
+    if (paidAmount === null) throw httpError("Odeme tutari negatif veya gecersiz olamaz.", 400);
+    if (paymentDate === undefined) throw httpError("Gecersiz odeme tarihi.", 400);
+    if (status && !["paid", "partial", "unpaid"].includes(status)) throw httpError("Gecersiz odeme durumu.", 400);
+    if (status === "paid") paidAmount = monthlyFee;
+    if (status === "unpaid") paidAmount = 0;
+    if (paidAmount > monthlyFee) paidAmount = monthlyFee;
 
     const payment = await transaction(async (client) => {
       const student = await fetchAccessibleStudentMeta(client, request.user, studentId);
@@ -1766,7 +1785,7 @@ app.post(
           periodMonth,
           monthlyFee,
           paidAmount,
-          request.body.paymentDate || today(),
+          paymentDate || today(),
           nullableText(request.body.method),
           nullableText(request.body.description),
           request.user.id
@@ -2040,6 +2059,53 @@ app.post(
       return report;
     });
     response.status(201).json({ ok: true, ...result });
+  })
+);
+
+app.post(
+  "/api/attendance/clear",
+  requireAuth,
+  requirePermission("attendance:write"),
+  asyncHandler(async (request, response) => {
+    if (!canResetAttendanceSession(request.user)) {
+      throw httpError("Yoklama temizleme yetkiniz yok.", 403);
+    }
+    if (!validAttendanceResetConfirm(request.body?.confirm)) {
+      throw httpError("Yoklama temizleme icin TEMIZLE onayi gereklidir.", 400);
+    }
+    if (hasForbiddenClubOverride(request)) {
+      throw httpError("Bu kulup yoklamasi icin yetkiniz yok.", 403);
+    }
+    const lessonDate = validDateOrNull(request.body?.date || request.body?.lessonDate);
+    const startTime = normalizeLessonTime(request.body?.time || request.body?.startTime);
+    const clubId = attendanceClearClubId(request);
+    if (!lessonDate || !startTime) {
+      throw httpError("Temizlenecek tarih ve saat secilmelidir.", 400);
+    }
+    if (!clubId) {
+      throw httpError("Bu kulup yoklamasi icin yetkiniz yok.", 403);
+    }
+    const result = await transaction(async (client) => {
+      const deleted = await client.query(
+        `DELETE FROM attendance_records
+         WHERE lesson_date = $1
+           AND ${lessonTimeSql("attendance_records")} = $2
+           AND club_id = $3
+         RETURNING id`,
+        [lessonDate, startTime, clubId]
+      );
+      await audit(
+        client,
+        request,
+        "clear",
+        "attendance_session",
+        `${lessonDate}_${startTime}_${clubId}`,
+        { club_id: clubId, lessonDate, startTime },
+        { club_id: clubId, deletedRecordCount: deleted.rowCount }
+      );
+      return { deleted: deleted.rowCount, clubId, lessonDate, startTime };
+    });
+    response.json({ ok: true, ...result });
   })
 );
 
@@ -2327,9 +2393,6 @@ app.patch(
          ORDER BY lower(s.full_name) ASC`,
         params
       );
-      if (!before.rows.length) {
-        throw httpError("Yoklama kaydi bulunamadi.", 404);
-      }
       const deleted = await client.query(
         `DELETE FROM attendance_records
          WHERE lesson_date = $1

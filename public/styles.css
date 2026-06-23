@@ -2641,14 +2641,14 @@ tbody tr:hover {
 
 @media print {
   @page {
-    size: A4;
-    margin: 12mm;
+    size: A4 landscape;
+    margin: 8mm;
   }
 
   html,
   body {
-    width: 210mm;
-    min-height: 297mm;
+    width: 297mm;
+    min-height: 210mm;
     background: #fff !important;
     color: #111 !important;
     overflow: visible !important;
@@ -2685,16 +2685,16 @@ tbody tr:hover {
 
   .print-report-page {
     display: grid;
-    gap: 10px;
+    gap: 7px;
     font-size: 10.5px;
-    line-height: 1.35;
+    line-height: 1.25;
   }
 
   .print-report-header {
     display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(210px, 0.9fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
     gap: 16px;
-    padding-bottom: 9px;
+    padding-bottom: 6px;
     border-bottom: 2px solid #111;
   }
 
@@ -2714,24 +2714,25 @@ tbody tr:hover {
 
   .print-report-brand h1 {
     margin-top: 2px;
-    font-size: 21px;
+    font-size: 14px;
   }
 
   .print-report-brand strong {
     margin-top: 4px;
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .print-report-meta {
     display: grid;
-    gap: 4px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px 10px;
   }
 
   .print-report-meta span {
     display: grid;
-    grid-template-columns: 92px 1fr;
+    grid-template-columns: 72px 1fr;
     gap: 6px;
-    padding: 3px 0;
+    padding: 2px 0;
     border-bottom: 1px solid #d1d5db;
   }
 
@@ -2813,15 +2814,17 @@ tbody tr:hover {
 
   .print-table th,
   .print-table td {
-    padding: 4px 5px;
-    border: 1px solid #d1d5db;
+    padding: 3px 4px;
+    border: 1px solid #111;
     text-align: left;
     vertical-align: top;
     overflow-wrap: break-word;
+    font-size: 10px;
   }
 
   .print-table th {
-    background: #f9fafb;
+    background: #f3f4f6;
+    font-size: 10.5px;
   }
 
   .print-table th:nth-child(1),
@@ -2832,12 +2835,22 @@ tbody tr:hover {
 
   .print-table th:nth-child(2),
   .print-table td:nth-child(2) {
-    width: 46%;
+    width: 30%;
   }
 
   .print-table th:nth-child(3),
   .print-table td:nth-child(3) {
-    width: 82px;
+    width: 90px;
+  }
+
+  .print-table th:nth-child(4),
+  .print-table td:nth-child(4) {
+    width: 76px;
+  }
+
+  .print-table th:nth-child(5),
+  .print-table td:nth-child(5) {
+    width: 130px;
   }
 
   .print-empty {
@@ -3241,6 +3254,69 @@ body {
   min-height: 44px;
 }
 
+.payment-edit-row td {
+  padding: 0 !important;
+  background: #f8fafc;
+}
+
+.student-inline-editor-row td {
+  padding: 0 !important;
+  background: #f8fafc;
+}
+
+.student-inline-editor-row .editor-panel {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.payment-inline-editor {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.inline-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inline-editor-head strong,
+.inline-editor-head span {
+  display: block;
+}
+
+.inline-editor-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.payment-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.payment-inline-grid label {
+  min-width: 0;
+}
+
+.payment-inline-message {
+  min-height: 18px;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.payment-inline-actions {
+  justify-content: flex-end;
+}
+
 @media (max-width: 768px) {
   #paymentsView .section-head,
   #paymentsView .filter-row,
@@ -3290,6 +3366,23 @@ body {
     width: 100%;
     padding-inline: 10px;
     white-space: normal;
+  }
+
+  .payment-inline-editor {
+    padding: 14px;
+  }
+
+  .payment-inline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-inline-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .payment-inline-actions button {
+    width: 100%;
   }
 }
 

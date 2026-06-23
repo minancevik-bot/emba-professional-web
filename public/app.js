@@ -12,13 +12,16 @@
     attendanceReportDetails: {},
     editingReportSessionId: null,
     pendingAttendanceResetSessionId: null,
+    pendingAttendanceClearContext: null,
     clubs: [],
     users: [],
     selectedClub: null,
     importPreview: null,
     studentDetails: {},
     openStudentId: null,
+    editingStudentInlineId: null,
     editingPaymentId: null,
+    editingPaymentRowKey: null,
     activeView: "superAdminView",
     pendingAttendanceTime: null,
     attendanceTimesOpen: false,
@@ -128,6 +131,7 @@
     attendanceUnmarkedCount: $("#attendanceUnmarkedCount"),
     lessonAttendanceCards: $("#lessonAttendanceCards"),
     saveBulkAttendanceButton: $("#saveBulkAttendanceButton"),
+    clearAttendanceButton: $("#clearAttendanceButton"),
     attendanceForm: $("#attendanceForm"),
     attendanceStudent: $("#attendanceStudent"),
     attendanceCards: $("#attendanceCards"),
@@ -195,6 +199,8 @@
     backupTable: $("#backupTable"),
     auditLogList: $("#auditLogList")
   };
+
+  const studentEditorHome = els.studentEditor?.parentElement || null;
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -1129,6 +1135,9 @@
     els.studentTable.innerHTML = state.students.map((student) => {
       const detail = state.studentDetails[student.id];
       const detailRow = state.openStudentId === String(student.id) && detail ? renderStudentDetailRow(detail) : "";
+      const editRow = state.editingStudentInlineId === String(student.id)
+        ? `<tr class="student-inline-editor-row"><td colspan="8"><div id="studentInlineEditorHost"></div></td></tr>`
+        : "";
       return `
         <tr class="student-row">
           <td data-label="Kayıt No"><span class="record-code">${recordNo(student)}</span></td>
@@ -1149,9 +1158,11 @@
             </details>
           </td>
         </tr>
+        ${editRow}
         ${detailRow}
       `;
     }).join("");
+    mountStudentInlineEditor();
   }
 
   function renderStudentDetailRow(data) {
@@ -1231,7 +1242,28 @@
     $("#studentMonthlyFee").value = "6000";
   }
 
-  function openStudentEditor(student) {
+  function mountStudentInlineEditor() {
+    const host = $("#studentInlineEditorHost");
+    if (host && els.studentEditor.parentElement !== host) {
+      host.appendChild(els.studentEditor);
+    }
+  }
+
+  function restoreStudentEditorHome() {
+    if (studentEditorHome && els.studentEditor.parentElement !== studentEditorHome) {
+      studentEditorHome.appendChild(els.studentEditor);
+    }
+  }
+
+  function openStudentEditor(student, options = {}) {
+    if (options.inline && student?.id) {
+      state.editingStudentInlineId = String(student.id);
+      renderStudents();
+      mountStudentInlineEditor();
+    } else {
+      state.editingStudentInlineId = null;
+      restoreStudentEditorHome();
+    }
     clearStudentForm();
     els.studentEditor.classList.remove("hidden");
     if (!student) return;
@@ -1401,6 +1433,13 @@
       const emptyClass = count ? "" : " empty";
       return `<button class="time-chip${activeClass}${emptyClass}" data-action="select-attendance-time" data-time="${time}" type="button"><strong>${time}</strong><span>${count} öğrenci</span></button>`;
     }).join("");
+    updateAttendanceClearButton();
+  }
+
+  function updateAttendanceClearButton() {
+    if (!els.clearAttendanceButton) return;
+    const hasTime = Boolean(normalizeTimeValue(els.attendanceSlotTime.value));
+    els.clearAttendanceButton.classList.toggle("hidden", !canResetAttendanceSession() || !hasTime);
   }
 
   async function loadLessonAttendance() {
@@ -1696,16 +1735,50 @@
   }
 
   function validAttendanceCleanConfirm(value) {
-    return ["TEMIZLE", "TEMİZLE", "SIFIRLA"].includes(String(value || "").trim().toLocaleUpperCase("tr-TR"));
+    const normalized = String(value || "").trim().toLocaleUpperCase("tr-TR").replace(/İ/g, "I");
+    return ["TEMIZLE", "SIFIRLA"].includes(normalized);
+  }
+
+  function attendanceClearClubId() {
+    return isSuperAdmin() ? state.selectedClub?.id : state.user?.clubId;
   }
 
   function openAttendanceResetModal(sessionId) {
     const session = state.attendanceReportSessions.find((item) => String(item.id) === String(sessionId));
     if (!session || !canResetAttendanceSession()) return;
     state.pendingAttendanceResetSessionId = session.id;
+    state.pendingAttendanceClearContext = {
+      source: "report",
+      date: dateInputValue(session.lessonDate || els.reportDate.value),
+      time: normalizeTimeValue(session.startTime),
+      clubId: session.clubId || attendanceClearClubId(),
+      label: `${dateOnlyLabel(session.lessonDate || els.reportDate.value)} · ${timeRangeLabel(session.startTime)} · ${session.clubName || currentClubName() || "KulüpAsist"}`
+    };
     if (els.attendanceResetSessionLabel) {
-      els.attendanceResetSessionLabel.textContent = `${dateOnlyLabel(session.lessonDate || els.reportDate.value)} · ${timeRangeLabel(session.startTime)} · ${session.clubName || currentClubName() || "KulüpAsist"}`;
+      els.attendanceResetSessionLabel.textContent = state.pendingAttendanceClearContext.label;
     }
+    if (els.attendanceResetConfirmInput) els.attendanceResetConfirmInput.value = "";
+    els.attendanceResetModal?.classList.remove("hidden");
+    window.setTimeout(() => els.attendanceResetConfirmInput?.focus(), 50);
+  }
+
+  function openSelectedAttendanceClearModal() {
+    const date = els.attendanceDate.value || new Date().toISOString().slice(0, 10);
+    const time = normalizeTimeValue(els.attendanceSlotTime.value);
+    if (!time) {
+      setNotice("Temizlemek için önce tarih ve saat seçin.", true);
+      return;
+    }
+    if (!canResetAttendanceSession()) return;
+    state.pendingAttendanceResetSessionId = null;
+    state.pendingAttendanceClearContext = {
+      source: "attendance",
+      date,
+      time,
+      clubId: attendanceClearClubId(),
+      label: `${dateOnlyLabel(date)} · ${timeRangeLabel(time)} · ${currentClubName() || "KulüpAsist"}`
+    };
+    if (els.attendanceResetSessionLabel) els.attendanceResetSessionLabel.textContent = state.pendingAttendanceClearContext.label;
     if (els.attendanceResetConfirmInput) els.attendanceResetConfirmInput.value = "";
     els.attendanceResetModal?.classList.remove("hidden");
     window.setTimeout(() => els.attendanceResetConfirmInput?.focus(), 50);
@@ -1713,13 +1786,15 @@
 
   function closeAttendanceResetModal() {
     state.pendingAttendanceResetSessionId = null;
+    state.pendingAttendanceClearContext = null;
     if (els.attendanceResetConfirmInput) els.attendanceResetConfirmInput.value = "";
     els.attendanceResetModal?.classList.add("hidden");
   }
 
   async function confirmAttendanceReset() {
-    const session = state.attendanceReportSessions.find((item) => String(item.id) === String(state.pendingAttendanceResetSessionId));
-    if (!session) {
+    const context = state.pendingAttendanceClearContext;
+    const reportSessionId = state.pendingAttendanceResetSessionId;
+    if (!context) {
       closeAttendanceResetModal();
       return;
     }
@@ -1729,19 +1804,23 @@
       return;
     }
     try {
-      await api(`/api/reports/attendance-session/${encodeURIComponent(session.id)}/reset`, {
-        method: "PATCH",
+      await api("/api/attendance/clear", {
+        method: "POST",
         body: JSON.stringify({
           confirm: "TEMIZLE",
-          date: dateInputValue(session.lessonDate || els.reportDate.value),
-          time: normalizeTimeValue(session.startTime),
-          clubId: session.clubId
+          date: context.date,
+          time: context.time,
+          clubId: context.clubId
         })
       });
       closeAttendanceResetModal();
-      delete state.attendanceReportDetails[session.id];
-      if (state.editingReportSessionId === session.id) state.editingReportSessionId = null;
-      await loadAttendanceReport();
+      if (context.source === "report") {
+        delete state.attendanceReportDetails[reportSessionId];
+        if (state.editingReportSessionId === reportSessionId) state.editingReportSessionId = null;
+        await loadAttendanceReport();
+      } else {
+        await loadAttendance();
+      }
       setNotice("Seçilen yoklama temizlendi.");
     } catch (_error) {
       setNotice("Yoklama temizlenirken hata oluştu.", true);
@@ -1756,6 +1835,11 @@
       ? clubNames[0]
       : (clubNames.length > 1 ? "Tüm Kulüpler" : (currentClubName() || "KulüpAsist"));
     const attendanceRate = Number(totals.attendanceRate || 0);
+    const rows = sessions.flatMap((session) => (session.records || []).map((record) => ({
+      ...record,
+      time: timeRangeLabel(session.startTime),
+      coach: record.recordedByName || session.recordedByName || "-"
+    })));
     els.printReport.innerHTML = `
       <div class="print-report-page">
         <header class="print-report-header">
@@ -1768,55 +1852,37 @@
             <span><strong>Rapor tarihi</strong>${escapeHtml(dateOnlyLabel(data.date))}</span>
             <span><strong>Gün</strong>${escapeHtml(data.dayOfWeek || "-")}</span>
             <span><strong>Hazırlanma</strong>${escapeHtml(dateTimeLabel(data.preparedAt))}</span>
+            <span><strong>Toplam</strong>${Number(totals.total || 0)} kayıt · %${attendanceRate} devam</span>
           </div>
         </header>
-        <section class="print-totals print-totals-top">
-          <span>Toplam kayıt <strong>${Number(totals.total || 0)}</strong></span>
-          <span>Geldi <strong>${Number(totals.present || 0)}</strong></span>
-          <span>Gelmedi <strong>${Number(totals.absent || 0)}</strong></span>
-          <span>Mazeretli <strong>${Number(totals.excused || 0)}</strong></span>
-          <span>Devam oranı <strong>%${attendanceRate}</strong></span>
-        </section>
-        ${sessions.length ? sessions.map((session) => `
-          <section class="print-session">
-            <header class="print-session-title">
-              <h2>${escapeHtml(timeRangeLabel(session.startTime))}</h2>
-              <span>${escapeHtml(session.clubName || clubName)}</span>
-            </header>
-            <div class="print-session-summary">
-              <span>Toplam <strong>${Number(session.total || 0)}</strong></span>
-              <span>Geldi <strong>${Number(session.present || 0)}</strong></span>
-              <span>Gelmedi <strong>${Number(session.absent || 0)}</strong></span>
-              <span>Mazeretli <strong>${Number(session.excused || 0)}</strong></span>
-              <span>Alan <strong>${escapeHtml(session.recordedByName || "-")}</strong></span>
-              <span>Alınma zamanı <strong>${escapeHtml(dateTimeLabel(session.recordedAt))}</strong></span>
-            </div>
-            <table class="print-table">
-              <thead><tr><th>Sıra</th><th>Öğrenci adı soyadı</th><th>Durum</th><th>Not</th></tr></thead>
-              <tbody>
-                ${(session.records || []).map((record, index) => `
-                  <tr>
-                    <td>${index + 1}</td>
-                    <td>${escapeHtml(record.studentName || "-")}</td>
-                    <td>${escapeHtml(reportStatusText(record.status))}</td>
-                    <td>${escapeHtml(record.note || "")}</td>
-                  </tr>
-                `).join("")}
-              </tbody>
-            </table>
-          </section>
-        `).join("") : `
-          <section class="print-empty">
-            <strong>Seçilen güne ait yoklama kaydı bulunamadı.</strong>
-          </section>
-        `}
-        <footer class="print-totals print-totals-footer">
-          <span>Toplam yoklama kaydı <strong>${Number(totals.total || 0)}</strong></span>
-          <span>Toplam geldi <strong>${Number(totals.present || 0)}</strong></span>
-          <span>Toplam gelmedi <strong>${Number(totals.absent || 0)}</strong></span>
-          <span>Toplam mazeretli <strong>${Number(totals.excused || 0)}</strong></span>
-          <span>Devam oranı <strong>%${attendanceRate}</strong></span>
-        </footer>
+        <table class="print-table print-report-table">
+          <thead>
+            <tr>
+              <th>Sıra No</th>
+              <th>Öğrenci Adı Soyadı</th>
+              <th>Saat</th>
+              <th>Durum</th>
+              <th>Antrenör</th>
+              <th>Not / Açıklama</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map((record, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${escapeHtml(record.studentName || "-")}</td>
+                <td>${escapeHtml(record.time || "-")}</td>
+                <td>${escapeHtml(reportStatusText(record.status))}</td>
+                <td>${escapeHtml(record.coach || "-")}</td>
+                <td>${escapeHtml(record.note || "")}</td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td colspan="6">Seçilen güne ait yoklama kaydı bulunamadı.</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
       </div>
     `;
   }
@@ -1868,6 +1934,91 @@
       });
     }
     return rows;
+  }
+
+  function paymentRowKey(payment) {
+    return payment?.id ? `payment-${payment.id}` : `student-${payment?.studentId || "new"}`;
+  }
+
+  function paymentInlineStatusOptions(status) {
+    return [
+      ["partial", "Kısmi"],
+      ["paid", "Ödendi"],
+      ["unpaid", "Ödenmedi"]
+    ].map(([value, label]) => `<option value="${value}" ${status === value ? "selected" : ""}>${label}</option>`).join("");
+  }
+
+  function renderPaymentEditRow(payment, rowKey) {
+    const status = paymentStatus(payment);
+    return `
+      <tr class="payment-edit-row">
+        <td colspan="9">
+          <form class="payment-inline-editor" data-payment-edit-form data-row-key="${escapeHtml(rowKey)}" data-payment-id="${escapeHtml(payment.id || "")}" data-student-id="${escapeHtml(payment.studentId || "")}">
+            <div class="inline-editor-head">
+              <div>
+                <strong>${escapeHtml(payment.studentName || "-")}</strong>
+                <span>${payment.id ? "Ödeme kaydı düzenleniyor" : "Bu öğrenci için yeni ödeme kaydı oluşturulacak"}</span>
+              </div>
+              <span class="soft-pill">${escapeHtml(monthLabel(payment.periodMonth))}</span>
+            </div>
+            <div class="payment-inline-grid">
+              <label>Aylık ücret<input name="monthlyFee" type="number" min="0" value="${escapeHtml(Number(payment.monthlyFee || 0))}" required></label>
+              <label>Ödenen tutar<input name="paidAmount" type="number" min="0" value="${escapeHtml(Number(payment.paidAmount || 0))}" required></label>
+              <label>Ödeme durumu<select name="status" data-payment-inline-status>${paymentInlineStatusOptions(status)}</select></label>
+              <label>Ay / dönem<input name="periodMonth" type="month" value="${escapeHtml(monthInputValue(payment.periodMonth))}" required></label>
+              <label>Ödeme tarihi<input name="paymentDate" type="date" value="${escapeHtml(dateInputValue(payment.paymentDate) || new Date().toISOString().slice(0, 10))}"></label>
+              <label>Ödeme yöntemi<input name="method" value="${escapeHtml(payment.method || "")}" placeholder="Nakit / Havale"></label>
+              <label class="span-2">Açıklama / not<input name="description" value="${escapeHtml(payment.description || "")}"></label>
+            </div>
+            <div class="form-message payment-inline-message" data-payment-inline-message></div>
+            <div class="actions payment-inline-actions">
+              <button type="submit">${payment.id ? "Değişiklikleri Kaydet" : "Ödemeyi Kaydet"}</button>
+              <button class="secondary" data-action="cancel-payment-inline" type="button">Vazgeç</button>
+            </div>
+          </form>
+        </td>
+      </tr>
+    `;
+  }
+
+  function paymentPayloadFromInlineForm(form) {
+    const payload = {
+      periodMonth: form.elements.periodMonth.value,
+      monthlyFee: form.elements.monthlyFee.value,
+      paidAmount: form.elements.paidAmount.value,
+      status: form.elements.status.value,
+      paymentDate: form.elements.paymentDate.value,
+      method: form.elements.method.value.trim(),
+      description: form.elements.description.value.trim()
+    };
+    if (!form.dataset.paymentId) payload.studentId = form.dataset.studentId;
+    return payload;
+  }
+
+  function syncInlinePaymentAmount(form) {
+    const status = form.elements.status.value;
+    const monthlyFee = Number(form.elements.monthlyFee.value || 0);
+    if (status === "paid") form.elements.paidAmount.value = monthlyFee;
+    if (status === "unpaid") form.elements.paidAmount.value = 0;
+  }
+
+  async function saveInlinePayment(form) {
+    const paymentId = form.dataset.paymentId;
+    const message = form.querySelector("[data-payment-inline-message]");
+    if (message) message.textContent = "";
+    try {
+      await api(paymentId ? `/api/payments/${paymentId}` : "/api/payments", {
+        method: paymentId ? "PATCH" : "POST",
+        body: JSON.stringify(paymentPayloadFromInlineForm(form))
+      });
+      state.editingPaymentRowKey = null;
+      await loadPayments();
+      await loadDashboard();
+      setNotice(paymentId ? "Ödeme güncellendi." : "Ödeme kaydedildi.");
+    } catch (_error) {
+      if (message) message.textContent = "Ödeme güncellenirken hata oluştu.";
+      setNotice("Ödeme güncellenirken hata oluştu.", true);
+    }
   }
 
   async function loadPayments() {
@@ -1933,6 +2084,8 @@
       ? rows.map((payment) => {
         const statusKey = paymentStatus(payment);
         const whatsApp = whatsappLink(payment);
+        const rowKey = paymentRowKey(payment);
+        const editRow = state.editingPaymentRowKey === rowKey ? renderPaymentEditRow(payment, rowKey) : "";
         return `
           <tr class="payment-row mobile-record-card">
             <td data-label="Öğrenci"><strong>${escapeHtml(payment.studentName)}</strong><br><span class="muted">${recordNo({ id: payment.studentId })}</span></td>
@@ -1945,12 +2098,13 @@
             <td data-label="Durum">${paymentStatusBadge(statusKey)}</td>
             <td data-label="İşlem">
               <div class="actions payment-actions">
-                ${can("payments:write") && payment.id ? `<button class="small-button secondary" data-action="edit-payment" data-id="${payment.id}" type="button">Düzenle</button>` : ""}
-                ${can("payments:delete") && payment.id ? `<button class="small-button danger" data-action="delete-payment" data-id="${payment.id}" type="button">Ödemeyi Sil</button>` : ""}
+                ${can("payments:write") ? `<button class="small-button secondary" data-action="edit-payment" data-row-key="${escapeHtml(rowKey)}" data-id="${escapeHtml(payment.id || "")}" data-student-id="${escapeHtml(payment.studentId || "")}" type="button">Düzenle</button>` : ""}
+                ${can("payments:delete") && payment.id ? `<button class="small-button danger" data-action="delete-payment" data-id="${payment.id}" type="button">Ödemeyi Sil</button>` : `<button class="small-button danger" type="button" disabled>Ödemeyi Sil</button>`}
                 ${whatsApp ? `<a class="small-button whatsapp" href="${whatsApp}" target="_blank" rel="noopener">WhatsApp</a>` : `<span class="small-button disabled">WhatsApp</span>`}
               </div>
             </td>
           </tr>
+          ${editRow}
         `;
       }).join("")
       : emptyRow(9, "Bu ay ödeme kaydı bulunamadı.", "Filtreleri değiştirerek tekrar deneyebilirsiniz.");
@@ -1979,6 +2133,7 @@
   function resetPaymentForm() {
     if (!els.paymentForm) return;
     state.editingPaymentId = null;
+    state.editingPaymentRowKey = null;
     if (els.paymentId) els.paymentId.value = "";
     if (els.paymentStudent) els.paymentStudent.disabled = false;
     if (els.paymentPaidAmount) els.paymentPaidAmount.value = "";
@@ -2350,7 +2505,12 @@
   els.globalSearchClearButton?.addEventListener("click", clearStudentSearch);
 
   els.newStudentButton.addEventListener("click", () => openStudentEditor());
-  els.cancelStudentButton.addEventListener("click", () => els.studentEditor.classList.add("hidden"));
+  els.cancelStudentButton.addEventListener("click", () => {
+    els.studentEditor.classList.add("hidden");
+    state.editingStudentInlineId = null;
+    restoreStudentEditorHome();
+    renderStudents();
+  });
   $("#studentBirthYear")?.addEventListener("input", () => updateAgeGroupFromBirthYear(false));
   $("#studentBirthYear")?.addEventListener("blur", () => updateAgeGroupFromBirthYear(true));
 
@@ -2417,6 +2577,8 @@
       await api(url, { method, body: JSON.stringify(readStudentForm()) });
       clearStudentForm();
       els.studentEditor.classList.add("hidden");
+      state.editingStudentInlineId = null;
+      restoreStudentEditorHome();
       await loadStudents();
       await loadDashboard();
       setNotice(id ? "Öğrenci güncellendi." : "Öğrenci kaydedildi.");
@@ -2439,7 +2601,7 @@
     try {
       if (action === "detail-student") await showStudentDetail(id);
       if (action === "manage-club") await selectClub(id);
-      if (action === "edit-student") openStudentEditor(state.students.find((student) => String(student.id) === String(id)));
+      if (action === "edit-student") openStudentEditor(state.students.find((student) => String(student.id) === String(id)), { inline: true });
       if (action === "mark-attendance") markLessonAttendance(id, button.dataset.status);
       if (action === "toggle-attendance-times") {
         state.attendanceTimesOpen = !state.attendanceTimesOpen;
@@ -2517,12 +2679,36 @@
         setNotice("Ödeme silindi.");
       }
       if (action === "edit-payment") {
-        const payment = buildPaymentRows().find((item) => String(item.id) === String(id));
-        startPaymentEdit(payment);
+        state.editingPaymentRowKey = button.dataset.rowKey || (id ? `payment-${id}` : `student-${button.dataset.studentId || ""}`);
+        renderPayments();
+      }
+      if (action === "cancel-payment-inline") {
+        state.editingPaymentRowKey = null;
+        renderPayments();
       }
     } catch (error) {
       setNotice(error.message, true);
     }
+  });
+
+  document.body.addEventListener("submit", async (event) => {
+    const form = event.target.closest("[data-payment-edit-form]");
+    if (!form) return;
+    event.preventDefault();
+    await saveInlinePayment(form);
+  });
+
+  document.body.addEventListener("change", (event) => {
+    const statusSelect = event.target.closest("[data-payment-inline-status]");
+    if (!statusSelect) return;
+    const form = statusSelect.closest("[data-payment-edit-form]");
+    if (form) syncInlinePaymentAmount(form);
+  });
+
+  document.body.addEventListener("input", (event) => {
+    const form = event.target.closest("[data-payment-edit-form]");
+    if (!form || event.target.name !== "paidAmount") return;
+    form.elements.status.value = paymentStatusFromAmounts(form.elements.monthlyFee.value, form.elements.paidAmount.value);
   });
 
   els.attendanceDate.addEventListener("change", loadAttendance);
@@ -2537,6 +2723,7 @@
       setNotice(error.message, true);
     }
   });
+  els.clearAttendanceButton?.addEventListener("click", openSelectedAttendanceClearModal);
   els.attendanceForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
