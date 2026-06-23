@@ -1835,17 +1835,65 @@
       ? clubNames[0]
       : (clubNames.length > 1 ? "Tüm Kulüpler" : (currentClubName() || "KulüpAsist"));
     const attendanceRate = Number(totals.attendanceRate || 0);
-    const rows = sessions.flatMap((session) => (session.records || []).map((record) => ({
-      ...record,
-      time: timeRangeLabel(session.startTime),
-      coach: record.recordedByName || session.recordedByName || "-"
-    })));
+    const printableSessions = sessions.slice(0, 3);
+    while (printableSessions.length < 3) {
+      printableSessions.push({
+        id: `empty-${printableSessions.length + 1}`,
+        startTime: "",
+        total: 0,
+        present: 0,
+        absent: 0,
+        excused: 0,
+        records: []
+      });
+    }
+    const statusMark = (status) => {
+      if (status === "present") return "+";
+      if (status === "excused") return "M";
+      return "-";
+    };
+    const printSessionTable = (session, index) => {
+      const records = [...(session.records || [])].sort((first, second) =>
+        String(first.studentName || "").localeCompare(String(second.studentName || ""), "tr")
+      );
+      const startTime = normalizeTimeValue(session.startTime);
+      const hourLabel = timeRangeLabel(startTime) || "Saat seçilmedi";
+      const columnLabel = `${dateOnlyLabel(data.date)}<br>${escapeHtml(startTime || "-")}`;
+      return `
+        <section class="print-hour-section">
+          <div class="print-hour-title">
+            <h2>${index + 1}. Saat / ${escapeHtml(hourLabel)}</h2>
+            <span>Toplam: ${Number(session.total || records.length || 0)} · Geldi: ${Number(session.present || 0)} · Gelmedi: ${Number(session.absent || 0)} · Mazeretli: ${Number(session.excused || 0)}</span>
+          </div>
+          <table class="print-attendance-matrix">
+            <thead>
+              <tr>
+                <th>Öğrenci Adı Soyadı</th>
+                <th>Tarih ve Saat<br>${columnLabel}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${records.length ? records.map((record) => `
+                <tr>
+                  <td>${escapeHtml(record.studentName || "-")}</td>
+                  <td>${escapeHtml(statusMark(record.status))}</td>
+                </tr>
+              `).join("") : `
+                <tr>
+                  <td colspan="2">Bu saat için yoklama kaydı bulunamadı.</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </section>
+      `;
+    };
     els.printReport.innerHTML = `
-      <div class="print-report-page">
+      <div class="print-report-page print-attendance-report">
         <header class="print-report-header">
           <div class="print-report-brand">
             <p>KulüpAsist</p>
-            <h1>Günlük Yoklama Raporu</h1>
+            <h1>KULÜPASİST YOKLAMA RAPORU</h1>
             <strong>${escapeHtml(clubName)}</strong>
           </div>
           <div class="print-report-meta">
@@ -1855,34 +1903,13 @@
             <span><strong>Toplam</strong>${Number(totals.total || 0)} kayıt · %${attendanceRate} devam</span>
           </div>
         </header>
-        <table class="print-table print-report-table">
-          <thead>
-            <tr>
-              <th>Sıra No</th>
-              <th>Öğrenci Adı Soyadı</th>
-              <th>Saat</th>
-              <th>Durum</th>
-              <th>Antrenör</th>
-              <th>Not / Açıklama</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.length ? rows.map((record, index) => `
-              <tr>
-                <td>${index + 1}</td>
-                <td>${escapeHtml(record.studentName || "-")}</td>
-                <td>${escapeHtml(record.time || "-")}</td>
-                <td>${escapeHtml(reportStatusText(record.status))}</td>
-                <td>${escapeHtml(record.coach || "-")}</td>
-                <td>${escapeHtml(record.note || "")}</td>
-              </tr>
-            `).join("") : `
-              <tr>
-                <td colspan="6">Seçilen güne ait yoklama kaydı bulunamadı.</td>
-              </tr>
-            `}
-          </tbody>
-        </table>
+        <div class="print-legend">
+          <span><strong>+</strong> Geldi</span>
+          <span><strong>-</strong> Gelmedi</span>
+          <span><strong>M</strong> Mazeretli</span>
+          ${sessions.length > 3 ? `<span>Not: İlk 3 saat grubu gösterildi.</span>` : ""}
+        </div>
+        ${printableSessions.map(printSessionTable).join("")}
       </div>
     `;
   }
