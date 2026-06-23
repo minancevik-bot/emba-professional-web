@@ -1,15 +1,22 @@
 :root {
   color-scheme: light;
-  --bg: #f5f7fb;
-  --surface: #ffffff;
+  --primary-color: #00B4D8;
+  --sidebar-bg: #0A192F;
+  --bg-color: #F8FAFC;
+  --card-bg: #FFFFFF;
+  --text-main: #1E293B;
+  --text-muted: #64748B;
+  --border-color: #E2E8F0;
+  --bg: var(--bg-color);
+  --surface: var(--card-bg);
   --surface-soft: #f9fafb;
-  --sidebar: #0f172a;
-  --sidebar-soft: #111827;
-  --text: #111827;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --primary: #dc2626;
-  --primary-hover: #b91c1c;
+  --sidebar: var(--sidebar-bg);
+  --sidebar-soft: #071225;
+  --text: var(--text-main);
+  --muted: var(--text-muted);
+  --border: var(--border-color);
+  --primary: var(--primary-color);
+  --primary-hover: #0096C7;
   --success: #16a34a;
   --danger: #ef4444;
   --warning: #f59e0b;
@@ -22,8 +29,8 @@
   --line: var(--border);
   --nav: var(--sidebar);
   --nav-2: var(--sidebar-soft);
-  --gold: var(--primary);
-  --gold-soft: #fee2e2;
+  --gold: var(--primary-color);
+  --gold-soft: #CFFAFE;
   --green: var(--success);
   --green-soft: #dcfce7;
   --red: var(--danger);
@@ -2003,7 +2010,7 @@ tbody tr:hover {
 }
 
 .loading-card::before {
-  content: "KulüpAsist";
+  content: "Kulüp Asistanı";
   position: absolute;
   inset: auto 0 64px;
   color: var(--sidebar);
@@ -3955,5 +3962,275 @@ body {
   .dashboard-hero .fallback-logo {
     width: 96px;
     height: 96px;
+  }
+}
+
+/* Exact UI architecture overrides */
+@media screen {
+  :root {
+    --primary-color: #00B4D8;
+    --sidebar-bg: #0A192F;
+    --bg-color: #F8FAFC;
+    --card-bg: #FFFFFF;
+    --text-main: #1E293B;
+    --text-muted: #64748B;
+    --border-color: #E2E8F0;
+    --bg: var(--bg-color);
+    --surface: var(--card-bg);
+    --surface-soft: #F8FAFC;
+    --sidebar: var(--sidebar-bg);
+    --sidebar-soft: #071225;
+    --text: var(--text-main);
+    --muted: var(--text-muted);
+    --border: var(--border-color);
+    --primary: var(--primary-color);
+    --primary-hover: #0096C7;
+    --ink: var(--text-main);
+    --line: var(--border-color);
+    --nav: var(--sidebar-bg);
+    --nav-2: #071225;
+    --gold: var(--primary-color);
+    --gold-soft: #E0F7FE;
+  }
+
+  body {
+    background: var(--bg-color);
+    color: var(--text-main);
+    font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+
+  .sidebar {
+    background: var(--sidebar-bg);
+  }
+
+  .login-view {
+    background:
+      linear-gradient(135deg, rgba(10, 25, 47, 0.98), rgba(0, 180, 216, 0.28)),
+      var(--sidebar-bg);
+  }
+
+  .login-brand-panel,
+  .content,
+  .topbar,
+  .section-head,
+  .dashboard-hero,
+  .panel,
+  .detail-panel,
+  .metric-card,
+  .table-card,
+  .club-card,
+  .form-section,
+  .empty-state,
+  .confirm-modal__card {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+    color: var(--text-main);
+  }
+
+  button,
+  .small-button,
+  .primary-action {
+    background: var(--primary-color);
+    color: #FFFFFF;
+    box-shadow: 0 10px 15px -3px rgba(0, 180, 216, 0.22), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+  }
+
+  button:hover,
+  .small-button:hover,
+  .primary-action:hover {
+    background: #0096C7;
+  }
+
+  input,
+  select,
+  textarea {
+    border-color: var(--border-color);
+    color: var(--text-main);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(0, 180, 216, 0.14);
+  }
+
+  .dashboard-hero,
+  .panel,
+  .detail-panel,
+  .metric-card,
+  .table-card,
+  .club-card,
+  .form-section,
+  .section-head {
+    border-radius: 16px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+    transition: transform 0.2s ease-in-out;
+  }
+
+  .dashboard-hero:hover,
+  .panel:hover,
+  .detail-panel:hover,
+  .metric-card:hover,
+  .table-card:hover,
+  .club-card:hover,
+  .form-section:hover,
+  .section-head:hover {
+    transform: translateY(-3px);
+  }
+
+  .dashboard-hero {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
+      radial-gradient(circle at 100% 0%, rgba(0, 180, 216, 0.15), transparent 36%);
+  }
+
+  .metric-card::before {
+    background: rgba(0, 180, 216, 0.16);
+  }
+
+  .nav-button[data-view="superAdminView"]::before { content: "↗"; }
+  .nav-button[data-view="dashboardView"]::before { content: "⌁"; }
+  .nav-button[data-view="studentsView"]::before { content: "↟"; }
+  .nav-button[data-view="attendanceView"]::before { content: "✓"; }
+  .nav-button[data-view="paymentsView"]::before { content: "₺"; }
+  .nav-button[data-view="importView"]::before { content: "⇪"; }
+  .nav-button[data-view="usersView"]::before { content: "◎"; }
+  .nav-button[data-view="backupView"]::before { content: "↻"; }
+
+  .badge-admin {
+    background: #FEE2E2;
+    color: #991B1B;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .badge-koordinator {
+    background: #FEF3C7;
+    color: #92400E;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .badge-antrenor {
+    background: #D1FAE5;
+    color: #065F46;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .badge-izleyici {
+    background: #F3F4F6;
+    color: #374151;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+}
+
+@media (max-width: 768px) {
+  table, thead, tbody, th, td, tr { display: block; }
+  thead tr { position: absolute; top: -9999px; left: -9999px; }
+  tr {
+    margin-bottom: 1rem;
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    padding: 15px;
+    border: 1px solid var(--border-color);
+  }
+  td {
+    border: none;
+    position: relative;
+    padding-left: 50%;
+    text-align: right;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+  }
+  td:before {
+    position: absolute;
+    left: 0;
+    width: 45%;
+    padding-right: 10px;
+    white-space: nowrap;
+    font-weight: 600;
+    text-align: left;
+    color: var(--text-muted);
+    content: attr(data-label);
+  }
+
+  .table-card {
+    overflow: visible;
+  }
+
+  .table-card table.responsive-table,
+  .table-card table.responsive-table thead,
+  .table-card table.responsive-table tbody,
+  .table-card table.responsive-table th,
+  .table-card table.responsive-table td,
+  .table-card table.responsive-table tr {
+    display: block;
+  }
+
+  .table-card table.responsive-table thead tr {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+  }
+
+  .table-card table.responsive-table tr {
+    margin-bottom: 1rem;
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    padding: 15px;
+    border: 1px solid var(--border-color);
+  }
+
+  .table-card table.responsive-table td {
+    display: block;
+    border: none;
+    position: relative;
+    padding: 0 0 0 50%;
+    text-align: right;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+  }
+
+  .table-card table.responsive-table td:before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    width: 45%;
+    padding-right: 10px;
+    white-space: nowrap;
+    font-weight: 600;
+    text-align: left;
+    color: var(--text-muted);
+  }
+
+  .student-detail-row td,
+  .student-inline-editor-row td,
+  .payment-editor-row td,
+  .empty-row td {
+    padding-left: 0;
+    text-align: left;
+  }
+
+  .student-detail-row td:before,
+  .student-inline-editor-row td:before,
+  .payment-editor-row td:before,
+  .empty-row td:before {
+    position: static;
+    display: block;
+    width: auto;
+    margin-bottom: 8px;
   }
 }

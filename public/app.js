@@ -425,7 +425,20 @@
   }
 
   function roleBadge(role, label) {
-    return `<span class="role-badge role-${escapeHtml(String(role || "viewer").replace("_", "-"))}">${escapeHtml(label || role || "viewer")}</span>`;
+    const normalized = String(role || "viewer").replace("_", "-");
+    const badgeClass = {
+      "super-admin": "badge-admin",
+      admin: "badge-admin",
+      manager: "badge-admin",
+      coordinator: "badge-koordinator",
+      koordinator: "badge-koordinator",
+      assistant: "badge-koordinator",
+      coach: "badge-antrenor",
+      antrenor: "badge-antrenor",
+      viewer: "badge-izleyici",
+      izleyici: "badge-izleyici"
+    }[normalized] || "badge-izleyici";
+    return `<span class="role-badge role-${escapeHtml(normalized)} ${badgeClass}">${escapeHtml(label || role || "viewer")}</span>`;
   }
 
   function isEmbaClubName(value) {
@@ -455,7 +468,7 @@
   }
 
   function emptyRow(cols, title, text) {
-    return `<tr class="empty-row"><td colspan="${cols}">${emptyState(title, text)}</td></tr>`;
+    return `<tr class="empty-row"><td data-label="Bilgi" colspan="${cols}">${emptyState(title, text)}</td></tr>`;
   }
 
   function setNotice(message, isError) {
@@ -633,14 +646,14 @@
     els.backToClubsButton.classList.toggle("hidden", !isSuperAdmin() || !state.selectedClub);
     const globalSearchBox = els.globalSearch?.closest(".search-box") || els.globalSearch;
     globalSearchBox?.classList.toggle("hidden", isSuperAdmin() && !state.selectedClub);
-    if (els.dashboardClubName) els.dashboardClubName.textContent = selectedName || "Kulüp Yönetim Paneli";
+    if (els.dashboardClubName) els.dashboardClubName.textContent = selectedName || "EMBA Spor Kulübü";
     if (els.dashboardEyebrow) {
-      els.dashboardEyebrow.textContent = isCoach() ? "Coach paneli" : (selectedName ? "Kulüp yönetimi" : "Kulüp seçilmedi");
+      els.dashboardEyebrow.textContent = isCoach() ? "Antrenör paneli" : (selectedName ? "EMBA Spor Kulübü" : "EMBA Spor Kulübü");
     }
     if (els.dashboardDescription) {
       els.dashboardDescription.textContent = isCoach()
-        ? "Bugünkü ders saatleri, öğrenci listesi ve yoklama durumunu takip edin."
-        : "Öğrenci, yoklama ve tahsilat durumunu seçili kulüp ölçeğinde izleyin.";
+        ? "Esra Mücahit Baturalp Akademi ders saatlerinizdeki yoklama ve öğrenci akışını takip edin."
+        : "Esra Mücahit Baturalp Akademi öğrenci, yoklama ve tahsilat yönetimi.";
     }
     if (els.dashboardClubLogo) {
       const isEmba = String(state.selectedClub?.slug || "").toLowerCase() === "emba" || (!isSuperAdmin() && currentClubName().toLocaleLowerCase("tr-TR").includes("emba"));
@@ -1136,7 +1149,7 @@
       const detail = state.studentDetails[student.id];
       const detailRow = state.openStudentId === String(student.id) && detail ? renderStudentDetailRow(detail) : "";
       const editRow = state.editingStudentInlineId === String(student.id)
-        ? `<tr class="student-inline-editor-row"><td colspan="8"><div id="studentInlineEditorHost"></div></td></tr>`
+        ? `<tr class="student-inline-editor-row"><td data-label="Düzenleme" colspan="8"><div id="studentInlineEditorHost"></div></td></tr>`
         : "";
       return `
         <tr class="student-row">
@@ -1194,7 +1207,7 @@
     `;
     return `
       <tr class="student-detail-row">
-        <td colspan="8">
+        <td data-label="Öğrenci Detayı" colspan="8">
           <div class="inline-detail">
             <div>
               <h3>${escapeHtml(student.fullName)}</h3>
@@ -1875,12 +1888,12 @@
             <tbody>
               ${records.length ? records.map((record) => `
                 <tr>
-                  <td>${escapeHtml(record.studentName || "-")}</td>
-                  <td>${escapeHtml(statusMark(record.status))}</td>
+                  <td data-label="Öğrenci Adı Soyadı">${escapeHtml(record.studentName || "-")}</td>
+                  <td data-label="Tarih ve Saat">${escapeHtml(statusMark(record.status))}</td>
                 </tr>
               `).join("") : `
                 <tr>
-                  <td colspan="2">Bu saat için yoklama kaydı bulunamadı.</td>
+                  <td data-label="Bilgi" colspan="2">Bu saat için yoklama kaydı bulunamadı.</td>
                 </tr>
               `}
             </tbody>
@@ -1979,7 +1992,7 @@
     const status = paymentStatus(payment);
     return `
       <tr class="payment-edit-row">
-        <td colspan="9">
+        <td data-label="Ödeme Düzenleme" colspan="9">
           <form class="payment-inline-editor" data-payment-edit-form data-row-key="${escapeHtml(rowKey)}" data-payment-id="${escapeHtml(payment.id || "")}" data-student-id="${escapeHtml(payment.studentId || "")}">
             <div class="inline-editor-head">
               <div>
