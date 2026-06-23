@@ -2645,6 +2645,15 @@ tbody tr:hover {
     margin: 12mm;
   }
 
+  html,
+  body {
+    width: 210mm;
+    min-height: 297mm;
+    background: #fff !important;
+    color: #111 !important;
+    overflow: visible !important;
+  }
+
   body * {
     visibility: hidden !important;
   }
@@ -2660,7 +2669,7 @@ tbody tr:hover {
     display: block !important;
     width: 100%;
     background: #fff;
-    color: #111827;
+    color: #111;
     font-family: Arial, sans-serif;
   }
 
@@ -2676,90 +2685,173 @@ tbody tr:hover {
 
   .print-report-page {
     display: grid;
-    gap: 14px;
-    font-size: 11px;
+    gap: 10px;
+    font-size: 10.5px;
+    line-height: 1.35;
   }
 
   .print-report-header {
-    display: flex;
-    justify-content: space-between;
-    gap: 18px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #111827;
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(210px, 0.9fr);
+    gap: 16px;
+    padding-bottom: 9px;
+    border-bottom: 2px solid #111;
   }
 
-  .print-report-header h1,
-  .print-report-header p {
+  .print-report-brand h1,
+  .print-report-brand p,
+  .print-report-brand strong {
+    display: block;
     margin: 0;
   }
 
-  .print-report-header h1 {
-    font-size: 22px;
+  .print-report-brand p {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
   }
 
-  .print-report-header p,
-  .print-report-header span,
-  .print-report-header small {
-    display: block;
-    color: #374151;
+  .print-report-brand h1 {
+    margin-top: 2px;
+    font-size: 21px;
+  }
+
+  .print-report-brand strong {
+    margin-top: 4px;
+    font-size: 13px;
+  }
+
+  .print-report-meta {
+    display: grid;
+    gap: 4px;
+  }
+
+  .print-report-meta span {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 6px;
+    padding: 3px 0;
+    border-bottom: 1px solid #d1d5db;
+  }
+
+  .print-report-meta strong {
+    color: #111;
   }
 
   .print-session {
     break-inside: avoid;
     page-break-inside: avoid;
     display: grid;
-    gap: 8px;
-    padding-top: 8px;
+    gap: 6px;
+    padding-top: 7px;
   }
 
-  .print-session h2 {
+  .print-session-title {
+    break-after: avoid;
+    page-break-after: avoid;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
     margin: 0;
     padding: 6px 8px;
-    border: 1px solid #111827;
+    border: 1px solid #111;
     background: #f3f4f6;
+  }
+
+  .print-session-title h2 {
+    margin: 0;
     font-size: 15px;
+  }
+
+  .print-session-title span {
+    color: #374151;
+    font-weight: 700;
   }
 
   .print-session-summary,
   .print-totals {
     display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .print-totals {
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 6px;
   }
 
   .print-session-summary span,
   .print-totals span {
-    padding: 5px;
+    min-width: 0;
+    padding: 4px 5px;
     border: 1px solid #d1d5db;
+    overflow-wrap: anywhere;
   }
 
   .print-session-summary strong,
   .print-totals strong {
     display: block;
-    color: #111827;
+    color: #111;
   }
 
   .print-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .print-table thead {
+    display: table-header-group;
+  }
+
+  .print-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .print-table th,
   .print-table td {
-    padding: 5px 6px;
+    padding: 4px 5px;
     border: 1px solid #d1d5db;
     text-align: left;
     vertical-align: top;
+    overflow-wrap: break-word;
   }
 
   .print-table th {
     background: #f9fafb;
   }
 
+  .print-table th:nth-child(1),
+  .print-table td:nth-child(1) {
+    width: 34px;
+    text-align: center;
+  }
+
+  .print-table th:nth-child(2),
+  .print-table td:nth-child(2) {
+    width: 46%;
+  }
+
+  .print-table th:nth-child(3),
+  .print-table td:nth-child(3) {
+    width: 82px;
+  }
+
   .print-empty {
     padding: 24px;
     border: 1px dashed #9ca3af;
     text-align: center;
+  }
+
+  .print-totals-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 2px solid #111;
   }
 }
 

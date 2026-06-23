@@ -42,6 +42,12 @@
     return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
   });
 
+  const sessionKeys = {
+    appActive: "kulupasist.appActive",
+    activeView: "kulupasist.activeView",
+    selectedClub: "kulupasist.selectedClub"
+  };
+
   const viewMeta = {
     superAdminView: ["KulüpAsist Merkez", "Kulüp ve kullanıcı yönetim merkezi"],
     dashboardView: ["Yönetim Paneli", "Kulüp operasyonlarını tek ekrandan takip edin."],
@@ -355,6 +361,39 @@
     return state.user?.permissions?.includes(permission);
   }
 
+  function saveAppSessionState(viewId = state.activeView) {
+    if (!state.user) return;
+    sessionStorage.setItem(sessionKeys.appActive, "true");
+    sessionStorage.setItem(sessionKeys.activeView, viewId || homeViewForRole());
+    if (state.selectedClub?.id) {
+      sessionStorage.setItem(sessionKeys.selectedClub, JSON.stringify(state.selectedClub));
+    } else {
+      sessionStorage.removeItem(sessionKeys.selectedClub);
+    }
+  }
+
+  function clearAppSessionState() {
+    Object.values(sessionKeys).forEach((key) => sessionStorage.removeItem(key));
+  }
+
+  function shouldRestoreAppSession() {
+    return sessionStorage.getItem(sessionKeys.appActive) === "true";
+  }
+
+  function storedActiveView() {
+    const value = sessionStorage.getItem(sessionKeys.activeView);
+    return value && viewMeta[value] ? value : homeViewForRole();
+  }
+
+  function storedSelectedClub() {
+    try {
+      const parsed = JSON.parse(sessionStorage.getItem(sessionKeys.selectedClub) || "null");
+      return parsed?.id ? parsed : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
   function currentClubName() {
     if (isSuperAdmin()) return state.selectedClub?.name || "";
     return state.user?.clubName || state.settings?.name || "EMBA Spor Kulübü";
@@ -496,7 +535,8 @@
     if (els.sidebarOverlay) els.sidebarOverlay.hidden = false;
   }
 
-  function showLogin() {
+  function showLogin(clearSessionTrace = true) {
+    if (clearSessionTrace) clearAppSessionState();
     state.user = null;
     state.selectedClub = null;
     state.clubs = [];
@@ -532,13 +572,26 @@
       user = data.user;
       state.user = user;
     }
+    await enterAuthenticatedApp(shouldRestoreAppSession() ? storedActiveView() : homeViewForRole());
+  }
+
+  async function enterAuthenticatedApp(targetView = null) {
     showApp();
     if (isSuperAdmin()) {
-      switchView("superAdminView");
+      if (!state.clubs.length) await loadClubs();
+      const savedClub = storedSelectedClub();
+      if (savedClub) {
+        state.selectedClub = state.clubs.find((club) => String(club.id) === String(savedClub.id)) || savedClub;
+        updateClubContext();
+        applyPermissions();
+        await loadSettings();
+        await loadStudents();
+      }
+      switchView(targetView || homeViewForRole());
     } else {
       if (!isCoach()) await loadSettings();
       await loadStudents();
-      switchView("dashboardView");
+      switchView(targetView || homeViewForRole());
     }
   }
 
@@ -700,6 +753,7 @@
     if (viewId === "usersView") loadUsers();
     if (viewId === "backupView") loadBackups();
     if (openCreateStudent) openStudentEditor();
+    saveAppSessionState(viewId);
   }
 
   async function loadClubs() {
@@ -1548,7 +1602,7 @@
       ? `<button class="small-button danger" data-action="cancel-attendance-session" data-session-id="${escapeHtml(session.id)}" type="button">Yoklamayı İptal Et</button>`
       : "";
     const resetInfo = detail.canReset && canResetAttendanceSession()
-      ? `<button class="small-button danger" data-action="reset-attendance-session" data-session-id="${escapeHtml(session.id)}" type="button">Yoklamayı Sıfırla</button>`
+      ? `<button class="small-button danger" data-action="reset-attendance-session" data-session-id="${escapeHtml(session.id)}" type="button">Yoklamayı Temizle</button>`
       : "";
     return `
       <div class="attendance-session-detail">
@@ -1641,6 +1695,10 @@
     return statusLabels[status] || status || "-";
   }
 
+  function validAttendanceCleanConfirm(value) {
+    return ["TEMIZLE", "TEMİZLE", "SIFIRLA"].includes(String(value || "").trim().toLocaleUpperCase("tr-TR"));
+  }
+
   function openAttendanceResetModal(sessionId) {
     const session = state.attendanceReportSessions.find((item) => String(item.id) === String(sessionId));
     if (!session || !canResetAttendanceSession()) return;
@@ -1665,8 +1723,8 @@
       closeAttendanceResetModal();
       return;
     }
-    if (String(els.attendanceResetConfirmInput?.value || "").trim() !== "SIFIRLA") {
-      setNotice("İşlem için SIFIRLA yazmalısınız.", true);
+    if (!validAttendanceCleanConfirm(els.attendanceResetConfirmInput?.value)) {
+      setNotice("İşlem için TEMIZLE yazmalısınız.", true);
       els.attendanceResetConfirmInput?.focus();
       return;
     }
@@ -1674,7 +1732,7 @@
       await api(`/api/reports/attendance-session/${encodeURIComponent(session.id)}/reset`, {
         method: "PATCH",
         body: JSON.stringify({
-          confirm: "SIFIRLA",
+          confirm: "TEMIZLE",
           date: dateInputValue(session.lessonDate || els.reportDate.value),
           time: normalizeTimeValue(session.startTime),
           clubId: session.clubId
@@ -1684,9 +1742,9 @@
       delete state.attendanceReportDetails[session.id];
       if (state.editingReportSessionId === session.id) state.editingReportSessionId = null;
       await loadAttendanceReport();
-      setNotice("Seçilen yoklama sıfırlandı.");
+      setNotice("Seçilen yoklama temizlendi.");
     } catch (_error) {
-      setNotice("Yoklama sıfırlanırken hata oluştu.", true);
+      setNotice("Yoklama temizlenirken hata oluştu.", true);
     }
   }
 
@@ -1701,19 +1759,30 @@
     els.printReport.innerHTML = `
       <div class="print-report-page">
         <header class="print-report-header">
-          <div>
-            <p>KulüpAsist Yoklama Raporu</p>
-            <h1>${escapeHtml(clubName)}</h1>
+          <div class="print-report-brand">
+            <p>KulüpAsist</p>
+            <h1>Günlük Yoklama Raporu</h1>
+            <strong>${escapeHtml(clubName)}</strong>
           </div>
-          <div>
-            <strong>${escapeHtml(dateOnlyLabel(data.date))}</strong>
-            <span>${escapeHtml(data.dayOfWeek || "")}</span>
-            <small>Hazırlanma: ${escapeHtml(dateTimeLabel(data.preparedAt))}</small>
+          <div class="print-report-meta">
+            <span><strong>Rapor tarihi</strong>${escapeHtml(dateOnlyLabel(data.date))}</span>
+            <span><strong>Gün</strong>${escapeHtml(data.dayOfWeek || "-")}</span>
+            <span><strong>Hazırlanma</strong>${escapeHtml(dateTimeLabel(data.preparedAt))}</span>
           </div>
         </header>
+        <section class="print-totals print-totals-top">
+          <span>Toplam kayıt <strong>${Number(totals.total || 0)}</strong></span>
+          <span>Geldi <strong>${Number(totals.present || 0)}</strong></span>
+          <span>Gelmedi <strong>${Number(totals.absent || 0)}</strong></span>
+          <span>Mazeretli <strong>${Number(totals.excused || 0)}</strong></span>
+          <span>Devam oranı <strong>%${attendanceRate}</strong></span>
+        </section>
         ${sessions.length ? sessions.map((session) => `
           <section class="print-session">
-            <h2>${escapeHtml(timeRangeLabel(session.startTime))}</h2>
+            <header class="print-session-title">
+              <h2>${escapeHtml(timeRangeLabel(session.startTime))}</h2>
+              <span>${escapeHtml(session.clubName || clubName)}</span>
+            </header>
             <div class="print-session-summary">
               <span>Toplam <strong>${Number(session.total || 0)}</strong></span>
               <span>Geldi <strong>${Number(session.present || 0)}</strong></span>
@@ -1723,10 +1792,11 @@
               <span>Alınma zamanı <strong>${escapeHtml(dateTimeLabel(session.recordedAt))}</strong></span>
             </div>
             <table class="print-table">
-              <thead><tr><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
+              <thead><tr><th>Sıra</th><th>Öğrenci adı soyadı</th><th>Durum</th><th>Not</th></tr></thead>
               <tbody>
-                ${(session.records || []).map((record) => `
+                ${(session.records || []).map((record, index) => `
                   <tr>
+                    <td>${index + 1}</td>
                     <td>${escapeHtml(record.studentName || "-")}</td>
                     <td>${escapeHtml(reportStatusText(record.status))}</td>
                     <td>${escapeHtml(record.note || "")}</td>
@@ -1740,7 +1810,7 @@
             <strong>Seçilen güne ait yoklama kaydı bulunamadı.</strong>
           </section>
         `}
-        <footer class="print-totals">
+        <footer class="print-totals print-totals-footer">
           <span>Toplam yoklama kaydı <strong>${Number(totals.total || 0)}</strong></span>
           <span>Toplam geldi <strong>${Number(totals.present || 0)}</strong></span>
           <span>Toplam gelmedi <strong>${Number(totals.absent || 0)}</strong></span>
@@ -1876,9 +1946,8 @@
             <td data-label="İşlem">
               <div class="actions payment-actions">
                 ${can("payments:write") && payment.id ? `<button class="small-button secondary" data-action="edit-payment" data-id="${payment.id}" type="button">Düzenle</button>` : ""}
+                ${can("payments:delete") && payment.id ? `<button class="small-button danger" data-action="delete-payment" data-id="${payment.id}" type="button">Ödemeyi Sil</button>` : ""}
                 ${whatsApp ? `<a class="small-button whatsapp" href="${whatsApp}" target="_blank" rel="noopener">WhatsApp</a>` : `<span class="small-button disabled">WhatsApp</span>`}
-                ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${payment.studentId}" type="button">Öğrenciyi Sil</button>` : ""}
-                ${can("payments:delete") && payment.id ? `<button class="small-button danger" data-action="delete-payment" data-id="${payment.id}" type="button">Sil</button>` : ""}
               </div>
             </td>
           </tr>
@@ -2188,7 +2257,12 @@
 
     try {
       const data = await api("/api/auth/me");
-      showLoginWithExistingSession(data.user);
+      state.user = data.user;
+      if (shouldRestoreAppSession()) {
+        await enterAuthenticatedApp(storedActiveView());
+      } else {
+        showLoginWithExistingSession(data.user);
+      }
     } catch (_error) {
       showLogin();
     }
@@ -2222,14 +2296,7 @@
       state.user = data.user;
       state.selectedClub = null;
       els.loginPassword.value = "";
-      showApp();
-      if (isSuperAdmin()) {
-        switchView("superAdminView");
-      } else {
-        if (!isCoach()) await loadSettings();
-        await loadStudents();
-        switchView("dashboardView");
-      }
+      await enterAuthenticatedApp(homeViewForRole());
     } catch (error) {
       els.loginMessage.textContent = error.message;
       els.loginMessage.classList.add("error");
@@ -2252,7 +2319,7 @@
     await api("/api/auth/logout", { method: "POST" }).catch(() => {});
     localStorage.removeItem("kulupasist.rememberedUsername");
     localStorage.removeItem("emba.rememberedUsername");
-    sessionStorage.clear();
+    clearAppSessionState();
     els.loginUsername.value = "";
     els.loginPassword.value = "";
     els.rememberMe.checked = false;

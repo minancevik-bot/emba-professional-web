@@ -208,6 +208,11 @@ function canResetAttendanceSession(user) {
   return role === "manager" || role === "super_admin";
 }
 
+function validAttendanceResetConfirm(value) {
+  const normalized = String(value || "").trim().toLocaleUpperCase("tr-TR");
+  return ["SIFIRLA", "TEMIZLE", "TEMİZLE"].includes(normalized);
+}
+
 function hasForbiddenClubOverride(request) {
   if (isSuperAdmin(request.user)) return false;
   const requestedClubId = getSelectedClubId(request);
@@ -2293,10 +2298,10 @@ app.patch(
   requirePermission("attendance:write"),
   asyncHandler(async (request, response) => {
     if (!canResetAttendanceSession(request.user)) {
-      throw httpError("Yoklama sifirlama yetkiniz yok.", 403);
+      throw httpError("Yoklama temizleme yetkiniz yok.", 403);
     }
-    if (String(request.body?.confirm || "").trim() !== "SIFIRLA") {
-      throw httpError("Yoklama sifirlama icin SIFIRLA onayi gereklidir.", 400);
+    if (!validAttendanceResetConfirm(request.body?.confirm)) {
+      throw httpError("Yoklama temizleme icin TEMIZLE onayi gereklidir.", 400);
     }
     const session = parseAttendanceSessionId(request.params.id);
     if (!session) {
