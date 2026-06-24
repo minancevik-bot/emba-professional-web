@@ -549,6 +549,40 @@
     if (els.sidebarOverlay) els.sidebarOverlay.hidden = true;
   }
 
+  function expandSearch(input) {
+    const box = input?.closest(".expanding-search, .search-box, .attendance-toolbar");
+    if (!input || !box) return;
+    box.classList.add("search-expanded");
+    window.setTimeout(() => input.focus(), 20);
+  }
+
+  function collapseSearch(input) {
+    const box = input?.closest(".expanding-search, .search-box, .attendance-toolbar");
+    if (!input || !box || box.contains(document.activeElement)) return;
+    box.classList.remove("search-expanded");
+  }
+
+  function setupExpandingSearch(input) {
+    const box = input?.closest(".expanding-search, .search-box, .attendance-toolbar");
+    if (!input || !box || box.dataset.expandingReady === "true") return;
+    box.dataset.expandingReady = "true";
+    box.addEventListener("click", (event) => {
+      if (event.target !== input && window.matchMedia("(max-width: 768px)").matches) {
+        event.preventDefault();
+        expandSearch(input);
+      }
+    });
+    input.addEventListener("focus", () => box.classList.add("search-expanded"));
+    input.addEventListener("blur", () => {
+      window.setTimeout(() => collapseSearch(input), 120);
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        input.blur();
+      }
+    });
+  }
+
   function openMobileMenu() {
     document.body.classList.add("sidebar-open");
     if (els.sidebarOverlay) els.sidebarOverlay.hidden = false;
@@ -2529,6 +2563,7 @@
 
   els.refreshDashboardButton.addEventListener("click", loadDashboard);
   els.studentStatusFilter.addEventListener("change", loadStudents);
+  [els.globalSearch, els.paymentSearch, els.userSearch, els.attendanceCardSearch].forEach(setupExpandingSearch);
   els.globalSearch.addEventListener("input", () => {
     window.clearTimeout(state.searchTimer);
     state.searchTimer = window.setTimeout(() => {
