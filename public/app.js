@@ -566,12 +566,16 @@
     const box = input?.closest(".expanding-search, .search-box, .attendance-toolbar");
     if (!input || !box || box.dataset.expandingReady === "true") return;
     box.dataset.expandingReady = "true";
-    box.addEventListener("click", (event) => {
+    const openFromPointer = (event) => {
       if (event.target !== input && window.matchMedia("(max-width: 768px)").matches) {
         event.preventDefault();
+        event.stopPropagation();
+        console.log("Arama tiklandi");
         expandSearch(input);
       }
-    });
+    };
+    box.addEventListener("click", openFromPointer);
+    box.addEventListener("touchstart", openFromPointer, { passive: false });
     input.addEventListener("focus", () => box.classList.add("search-expanded"));
     input.addEventListener("blur", () => {
       window.setTimeout(() => collapseSearch(input), 120);
@@ -580,6 +584,25 @@
       if (event.key === "Escape") {
         input.blur();
       }
+    });
+  }
+
+  function setupExpandingSearchFallbacks() {
+    ["#globalSearch", "#paymentSearch", "#userSearch", "#attendanceCardSearch"].forEach((selector) => {
+      const input = document.querySelector(selector);
+      const box = input?.closest(".expanding-search, .search-box, .attendance-toolbar");
+      if (!input || !box || box.dataset.expandingFallbackReady === "true") return;
+      box.dataset.expandingFallbackReady = "true";
+      const open = (event) => {
+        if (!window.matchMedia("(max-width: 768px)").matches) return;
+        if (event.target === input) return;
+        event.preventDefault();
+        event.stopPropagation();
+        console.log("Arama tiklandi");
+        expandSearch(input);
+      };
+      document.querySelector(selector)?.closest(".expanding-search, .search-box, .attendance-toolbar")?.addEventListener("click", open);
+      document.querySelector(selector)?.closest(".expanding-search, .search-box, .attendance-toolbar")?.addEventListener("touchstart", open, { passive: false });
     });
   }
 
@@ -2564,6 +2587,7 @@
   els.refreshDashboardButton.addEventListener("click", loadDashboard);
   els.studentStatusFilter.addEventListener("change", loadStudents);
   [els.globalSearch, els.paymentSearch, els.userSearch, els.attendanceCardSearch].forEach(setupExpandingSearch);
+  setupExpandingSearchFallbacks();
   els.globalSearch.addEventListener("input", () => {
     window.clearTimeout(state.searchTimer);
     state.searchTimer = window.setTimeout(() => {

@@ -1,3 +1,12 @@
+html, body {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100vw;
+  overflow-x: hidden;
+  /* iOS çentik ve alt bar uyumluluğu */
+  padding-top: env(safe-area-inset-top) !important;
+}
+
 :root {
   color-scheme: light;
   --primary-color: #00A6C2;
@@ -4616,5 +4625,57 @@ body {
     min-width: 30px !important;
     max-width: 30px !important;
     max-height: 30px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .mobile-header,
+  .topbar {
+    top: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  .content,
+  main.content {
+    margin-top: 0 !important;
+    padding-top: 60px !important;
+  }
+
+  .mobile-header + .sidebar + main,
+  #appShell > main.content {
+    padding-top: 60px !important;
+  }
+
+  .topbar {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    pointer-events: none !important;
+    z-index: 70 !important;
+  }
+
+  .topbar-actions,
+  .user-area,
+  .expanding-search,
+  .search-box,
+  .search-box input,
+  .search-box button,
+  #globalSearch,
+  #paymentSearch,
+  #userSearch,
+  #attendanceCardSearch {
+    position: relative;
+    z-index: 9999 !important;
+    pointer-events: auto !important;
+  }
+
+  .expanding-search,
+  .expanding-search::before,
+  .expanding-search input {
+    z-index: 9999 !important;
+    pointer-events: auto !important;
   }
 }
