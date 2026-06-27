@@ -19,6 +19,7 @@
     importPreview: null,
     studentDetails: {},
     openStudentId: null,
+    openStudentActionsId: null,
     editingStudentInlineId: null,
     editingPaymentId: null,
     editingPaymentRowKey: null,
@@ -137,7 +138,10 @@
     attendanceCards: $("#attendanceCards"),
     attendanceTable: $("#attendanceTable"),
     attendanceReportForm: $("#attendanceReportForm"),
+    reportType: $("#reportType"),
     reportDate: $("#reportDate"),
+    reportWeekStart: $("#reportWeekStart"),
+    reportWeekWrap: $("#reportWeekWrap"),
     reportTime: $("#reportTime"),
     reportCoach: $("#reportCoach"),
     reportStatus: $("#reportStatus"),
@@ -242,6 +246,19 @@
     }).formatToParts(date);
     const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
     return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  function addDaysValue(value, days) {
+    const base = new Date(`${dateInputValue(value)}T12:00:00`);
+    base.setDate(base.getDate() + days);
+    return base.toISOString().slice(0, 10);
+  }
+
+  function weekStartValue(value) {
+    const base = new Date(`${dateInputValue(value || new Date().toISOString().slice(0, 10))}T12:00:00`);
+    const day = base.getDay() || 7;
+    base.setDate(base.getDate() - day + 1);
+    return base.toISOString().slice(0, 10);
   }
 
   function monthInputValue(value) {
@@ -1205,6 +1222,7 @@
     els.studentTable.innerHTML = state.students.map((student) => {
       const detail = state.studentDetails[student.id];
       const detailRow = state.openStudentId === String(student.id) && detail ? renderStudentDetailRow(detail) : "";
+      const actionRow = state.openStudentActionsId === String(student.id) ? renderStudentActionRow(student) : "";
       const editRow = state.editingStudentInlineId === String(student.id)
         ? `<tr class="student-inline-editor-row"><td data-label="Düzenleme" colspan="8"><div id="studentInlineEditorHost"></div></td></tr>`
         : "";
@@ -1218,21 +1236,40 @@
           <td data-label="Telefon">${escapeHtml(student.phone || "-")}</td>
           <td data-label="Durum">${statusBadge(student.status)}</td>
           <td data-label="İşlem">
-            <details class="row-menu">
-              <summary>İşlemler</summary>
-              <div>
-                <button class="small-button secondary" data-action="detail-student" data-id="${student.id}" type="button">Detay</button>
-                ${can("students:write") ? `<button class="small-button" data-action="edit-student" data-id="${student.id}" type="button">Düzenle</button>` : ""}
-                ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${student.id}" type="button">Sil</button>` : ""}
-              </div>
-            </details>
+            <button class="small-button secondary" data-action="toggle-student-actions" data-id="${student.id}" type="button">İşlemler</button>
           </td>
         </tr>
+        ${actionRow}
         ${editRow}
         ${detailRow}
       `;
     }).join("");
     mountStudentInlineEditor();
+  }
+
+  function renderStudentActionRow(student) {
+    const phoneLink = studentWhatsappLink(student);
+    return `
+      <tr class="student-action-panel-row">
+        <td data-label="İşlem Paneli" colspan="8">
+          <div class="student-action-panel">
+            <button class="small-button secondary" data-action="detail-student" data-id="${student.id}" type="button">Öğrenciyi Gör</button>
+            ${can("students:write") ? `<button class="small-button" data-action="edit-student" data-id="${student.id}" type="button">Düzenle</button>` : ""}
+            ${can("payments:read") ? `<button class="small-button secondary" data-action="student-payment" data-id="${student.id}" type="button">Ödeme</button>` : ""}
+            <button class="small-button secondary" data-action="student-attendance-detail" data-id="${student.id}" type="button">Yoklama/Detay</button>
+            ${phoneLink ? `<a class="small-button whatsapp" href="${phoneLink}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+            ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${student.id}" type="button">Pasife Al / Sil</button>` : ""}
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  function studentWhatsappLink(student) {
+    const phone = normalizePhoneForWhatsapp(student?.phone);
+    if (!phone) return "";
+    const message = `Merhaba, ${student?.fullName || "öğrencimiz"} için bilgi almak istiyorum.`;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   }
 
   function renderStudentDetailRow(data) {
@@ -1602,8 +1639,33 @@
     if (!can("attendance:read")) return;
     const todayValue = new Date().toISOString().slice(0, 10);
     els.reportDate.value = els.reportDate.value || todayValue;
+    if (els.reportWeekStart) els.reportWeekStart.value = els.reportWeekStart.value || weekStartValue(els.reportDate.value);
     if (isSuperAdmin() && !state.clubs.length) await loadClubs();
     populateReportStaticFilters();
+    const reportType = els.reportType?.value || "daily";
+    els.reportWeekWrap?.classList.toggle("hidden", reportType !== "weekly");
+    if (reportType === "weekly") {
+      const start = weekStartValue(els.reportWeekStart?.value || els.reportDate.value);
+      const end = addDaysValue(start, 6);
+      if (els.reportWeekStart) els.reportWeekStart.value = start;
+      const weeklyParams = new URLSearchParams({ start, end, status: els.reportStatus.value || "all" });
+      if (els.reportCoach.value) weeklyParams.set("coachId", els.reportCoach.value);
+      if (isSuperAdmin() && els.reportClub.value) weeklyParams.set("clubId", els.reportClub.value);
+      try {
+        const data = await api(`/api/reports/attendance-weekly?${weeklyParams}`);
+        state.attendanceReportSessions = data.sessions || [];
+        state.attendanceReport = [];
+        populateReportDynamicFilters(data);
+        renderWeeklyAttendanceReport(data);
+      } catch (_error) {
+        state.attendanceReportSessions = [];
+        state.attendanceReportDetails = {};
+        els.attendanceReportSummary.innerHTML = "";
+        els.attendanceReportSessions.innerHTML = emptyState("Raporlar yüklenirken hata oluştu.", "Sayfada kalıp filtreleri değiştirerek tekrar deneyebilirsiniz.");
+        setNotice("Raporlar yüklenirken hata oluştu.", true);
+      }
+      return;
+    }
     const params = new URLSearchParams({
       date: els.reportDate.value,
       status: els.reportStatus.value || "all"
@@ -1671,6 +1733,52 @@
         <h3>${escapeHtml(title)}</h3>
       </div>
       ${sessions.length ? sessions.map(renderAttendanceReportSession).join("") : emptyState("Bu gün için saat bazlı yoklama bulunamadı.", "Tarih veya filtreleri değiştirerek tekrar deneyin.")}
+    `;
+  }
+
+  function attendanceMark(status) {
+    if (status === "present") return "+";
+    if (status === "excused") return "M";
+    if (status === "absent") return "-";
+    return "";
+  }
+
+  function renderWeeklyAttendanceReport(data = {}) {
+    const columns = data.columns || [];
+    const rows = data.students || [];
+    const totals = data.totals || {};
+    els.attendanceReportSummary.innerHTML = [
+      metricCard("Toplam", totals.total || 0, "navy", "Kayıt"),
+      metricCard("Geldi", totals.present || 0, "green", "Katılım"),
+      metricCard("Gelmedi", totals.absent || 0, "red", "Devamsızlık"),
+      metricCard("Mazeretli", totals.excused || 0, "gold", "Mazeret")
+    ].join("");
+    if (!rows.length || !columns.length) {
+      els.attendanceReportSessions.innerHTML = emptyState("Seçilen hafta için yoklama kaydı bulunamadı.", "Hafta başlangıcını veya filtreleri değiştirerek tekrar deneyin.");
+      return;
+    }
+    els.attendanceReportSessions.innerHTML = `
+      <div class="attendance-report-title">
+        <h3>${escapeHtml(dateOnlyLabel(data.start))} - ${escapeHtml(dateOnlyLabel(data.end))} Haftalık Yoklama</h3>
+      </div>
+      <div class="weekly-report-scroll">
+        <table class="weekly-report-table">
+          <thead>
+            <tr>
+              <th>Öğrenci</th>
+              ${columns.map((column) => `<th>${escapeHtml(dateOnlyLabel(column.date))}<br>${escapeHtml(column.time || "-")}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((student) => `
+              <tr>
+                <td data-label="Öğrenci"><strong>${escapeHtml(student.studentName || "-")}</strong></td>
+                ${columns.map((column) => `<td data-label="${escapeHtml(`${dateOnlyLabel(column.date)} ${column.time || ""}`)}">${escapeHtml(attendanceMark(student.matrix?.[column.key]?.status))}</td>`).join("")}
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
     `;
   }
 
@@ -1984,7 +2092,66 @@
     `;
   }
 
+  function renderWeeklyPrintReport(data) {
+    const columns = data.columns || [];
+    const rows = data.students || [];
+    const totals = data.totals || {};
+    els.printReport.innerHTML = `
+      <div class="print-report-page print-attendance-report">
+        <header class="print-report-header">
+          <div class="print-report-brand">
+            <p>Kulüp Asistanı</p>
+            <h1>HAFTALIK YOKLAMA RAPORU</h1>
+            <strong>${escapeHtml(currentClubName() || "EMBA Spor Kulübü")}</strong>
+          </div>
+          <div class="print-report-meta">
+            <span><strong>Hafta</strong>${escapeHtml(dateOnlyLabel(data.start))} - ${escapeHtml(dateOnlyLabel(data.end))}</span>
+            <span><strong>Hazırlanma</strong>${escapeHtml(dateTimeLabel(data.preparedAt))}</span>
+            <span><strong>Toplam</strong>${Number(totals.total || 0)} kayıt</span>
+            <span><strong>Devam</strong>${Number(totals.present || 0)} geldi</span>
+          </div>
+        </header>
+        <div class="print-legend"><span><strong>+</strong> Geldi</span><span><strong>-</strong> Gelmedi</span><span><strong>M</strong> Mazeretli</span></div>
+        <table class="print-attendance-matrix weekly-print-matrix">
+          <thead>
+            <tr>
+              <th>Öğrenci</th>
+              ${columns.map((column) => `<th>${escapeHtml(dateOnlyLabel(column.date))}<br>${escapeHtml(column.time || "-")}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map((student) => `
+              <tr>
+                <td data-label="Öğrenci">${escapeHtml(student.studentName || "-")}</td>
+                ${columns.map((column) => `<td data-label="${escapeHtml(column.key)}">${escapeHtml(attendanceMark(student.matrix?.[column.key]?.status))}</td>`).join("")}
+              </tr>
+            `).join("") : `<tr><td data-label="Bilgi" colspan="${Math.max(columns.length + 1, 2)}">Seçilen hafta için yoklama kaydı bulunamadı.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   async function printAttendanceReport() {
+    const reportType = els.reportType?.value || "daily";
+    if (reportType === "weekly") {
+      const start = weekStartValue(els.reportWeekStart?.value || els.reportDate.value || new Date().toISOString().slice(0, 10));
+      const end = addDaysValue(start, 6);
+      const weeklyParams = new URLSearchParams({ start, end, status: els.reportStatus.value || "all" });
+      if (els.reportCoach.value) weeklyParams.set("coachId", els.reportCoach.value);
+      if (isSuperAdmin() && els.reportClub.value) weeklyParams.set("clubId", els.reportClub.value);
+      try {
+        setNotice("Haftalık rapor çıktısı hazırlanıyor...");
+        const data = await api(`/api/reports/attendance-weekly?${weeklyParams}`);
+        renderWeeklyPrintReport(data);
+        await new Promise((resolve) => window.setTimeout(resolve, 80));
+        window.print();
+        setNotice("");
+      } catch (_error) {
+        setNotice("Rapor çıktısı hazırlanırken hata oluştu.", true);
+      }
+      return;
+    }
     const reportDate = els.reportDate.value || new Date().toISOString().slice(0, 10);
     els.reportDate.value = reportDate;
     const params = new URLSearchParams({ date: reportDate });
@@ -2699,8 +2866,18 @@
     const action = button.dataset.action;
     try {
       if (action === "detail-student") await showStudentDetail(id);
+      if (action === "toggle-student-actions") {
+        state.openStudentActionsId = state.openStudentActionsId === String(id) ? null : String(id);
+        renderStudents();
+      }
       if (action === "manage-club") await selectClub(id);
       if (action === "edit-student") openStudentEditor(state.students.find((student) => String(student.id) === String(id)), { inline: true });
+      if (action === "student-payment") {
+        const student = state.students.find((item) => String(item.id) === String(id));
+        if (student && els.paymentSearch) els.paymentSearch.value = student.fullName || "";
+        switchView("paymentsView");
+      }
+      if (action === "student-attendance-detail") await showStudentDetail(id);
       if (action === "mark-attendance") markLessonAttendance(id, button.dataset.status);
       if (action === "toggle-attendance-times") {
         state.attendanceTimesOpen = !state.attendanceTimesOpen;
@@ -2855,6 +3032,14 @@
     }
   });
 
+  els.reportType?.addEventListener("change", () => {
+    els.reportWeekWrap?.classList.toggle("hidden", els.reportType.value !== "weekly");
+    if (els.reportType.value === "weekly" && els.reportWeekStart) {
+      els.reportWeekStart.value = weekStartValue(els.reportWeekStart.value || els.reportDate.value);
+    }
+    loadAttendanceReport();
+  });
+  els.reportWeekStart?.addEventListener("change", loadAttendanceReport);
   els.printAttendanceReportButton?.addEventListener("click", printAttendanceReport);
   els.cancelAttendanceResetButton?.addEventListener("click", closeAttendanceResetModal);
   els.confirmAttendanceResetButton?.addEventListener("click", confirmAttendanceReset);

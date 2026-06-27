@@ -398,7 +398,9 @@
             </div>
             </div>
             <form id="attendanceReportForm" class="inline-form">
+              <label>Rapor tipi<select id="reportType"><option value="daily">Günlük</option><option value="weekly">Haftalık</option></select></label>
               <label>Tarih<input id="reportDate" type="date"></label>
+              <label id="reportWeekWrap" class="hidden">Hafta başlangıcı<input id="reportWeekStart" type="date"></label>
               <label>Saat<select id="reportTime"><option value="">Tüm saatler</option></select></label>
               <label>Antrenör<select id="reportCoach"><option value="">Tüm antrenörler</option></select></label>
               <label>Durum

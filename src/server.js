@@ -2259,6 +2259,103 @@ app.get(
 );
 
 app.get(
+  "/api/reports/attendance-weekly",
+  requireAuth,
+  requirePermission("attendance:read"),
+  asyncHandler(async (request, response) => {
+    if (hasForbiddenClubOverride(request)) {
+      throw httpError("Bu kulup raporu icin yetkiniz yok.", 403);
+    }
+    const start = validDateOrNull(request.query.start || today());
+    const end = validDateOrNull(request.query.end || start);
+    if (!start || !end) {
+      throw httpError("Gecerli hafta baslangic ve bitis tarihi secilmelidir.", 400);
+    }
+    const params = [start, end];
+    const filters = ["a.lesson_date BETWEEN $1 AND $2"];
+    const status = nullableText(request.query.status);
+    const coachId = Number(request.query.coachId || 0);
+    if (status && status !== "all") {
+      params.push(status);
+      filters.push(`a.status = $${params.length}`);
+    }
+    if (!isCoach(request.user) && Number.isInteger(coachId) && coachId > 0) {
+      params.push(coachId);
+      filters.push(`a.recorded_by = $${params.length}`);
+    }
+    addReportAttendanceAccessFilter(filters, params, request, "a");
+    const slotExpression = lessonTimeSql("a");
+    const { rows } = await query(
+      `SELECT
+         a.id,
+         a.student_id,
+         a.lesson_date,
+         a.status,
+         a.note,
+         a.club_id,
+         ${slotExpression} AS start_time,
+         s.full_name AS student_name,
+         c.name AS club_name,
+         u.full_name AS recorded_by_name
+       FROM attendance_records a
+       JOIN students s ON s.id = a.student_id
+       LEFT JOIN clubs c ON c.id = a.club_id
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}
+       ORDER BY a.lesson_date ASC, ${slotExpression} ASC, lower(s.full_name) ASC`,
+      params
+    );
+    const columnMap = new Map();
+    const studentMap = new Map();
+    const totals = { total: 0, present: 0, absent: 0, excused: 0, other: 0 };
+    for (const row of rows) {
+      const date = dateOnly(row.lesson_date);
+      const time = row.start_time || normalizeLessonTime(row.start_time) || "";
+      const key = `${date}_${time}`;
+      if (!columnMap.has(key)) columnMap.set(key, { key, date, time });
+      if (!studentMap.has(String(row.student_id))) {
+        studentMap.set(String(row.student_id), {
+          studentId: row.student_id,
+          studentName: row.student_name,
+          matrix: {}
+        });
+      }
+      const student = studentMap.get(String(row.student_id));
+      student.matrix[key] = {
+        status: row.status,
+        note: row.note,
+        recordedByName: row.recorded_by_name,
+        clubName: row.club_name
+      };
+      totals.total += 1;
+      if (row.status === "present") totals.present += 1;
+      else if (row.status === "absent") totals.absent += 1;
+      else if (row.status === "excused") totals.excused += 1;
+      else totals.other += 1;
+    }
+    const coachResult = await query(
+      `SELECT DISTINCT a.recorded_by AS coach_id, COALESCE(u.full_name, 'Sistem') AS coach_name
+       FROM attendance_records a
+       LEFT JOIN users u ON u.id = a.recorded_by
+       ${whereClause(filters)}
+       ORDER BY coach_name ASC`,
+      params
+    );
+    response.json({
+      type: "weekly",
+      start,
+      end,
+      preparedAt: new Date().toISOString(),
+      columns: Array.from(columnMap.values()),
+      students: Array.from(studentMap.values()),
+      sessions: [],
+      totals,
+      coaches: coachResult.rows.map((row) => ({ id: row.coach_id, name: row.coach_name }))
+    });
+  })
+);
+
+app.get(
   "/api/reports/attendance-print",
   requireAuth,
   requirePermission("attendance:read"),

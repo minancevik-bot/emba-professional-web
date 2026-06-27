@@ -3204,6 +3204,94 @@ body {
   }
 }
 
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 6mm;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .sidebar,
+  .mobile-header,
+  .topbar,
+  .app-shell,
+  .login-view,
+  .confirm-modal,
+  button,
+  input,
+  select,
+  textarea,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-report,
+  .print-report * {
+    visibility: visible !important;
+  }
+
+  .print-report {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    color: #000 !important;
+    background: #fff !important;
+    font-family: Arial, sans-serif !important;
+  }
+
+  .print-report-page {
+    display: grid !important;
+    gap: 4px !important;
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+  }
+
+  .print-hour-section,
+  .print-attendance-matrix,
+  .weekly-print-matrix {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-attendance-matrix,
+  .weekly-print-matrix {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    border: 1px solid #000 !important;
+  }
+
+  .print-attendance-matrix th,
+  .print-attendance-matrix td,
+  .weekly-print-matrix th,
+  .weekly-print-matrix td {
+    display: table-cell !important;
+    border: 1px solid #000 !important;
+    padding: 2px 4px !important;
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+
+  .print-attendance-matrix th:first-child,
+  .print-attendance-matrix td:first-child,
+  .weekly-print-matrix th:first-child,
+  .weekly-print-matrix td:first-child {
+    text-align: left !important;
+    width: 26% !important;
+  }
+}
+
 @media (max-width: 480px) {
   body {
     font-size: 14px;
@@ -4625,6 +4713,136 @@ body {
     min-width: 30px !important;
     max-width: 30px !important;
     max-height: 30px !important;
+  }
+}
+
+.student-action-panel-row td {
+  padding: 0 14px 14px;
+  background: #f8fafc;
+}
+
+.student-action-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--card-bg);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+
+.weekly-report-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.weekly-report-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.weekly-report-table th,
+.weekly-report-table td {
+  border-bottom: 1px solid var(--border-color);
+  padding: 9px 10px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.weekly-report-table th:first-child,
+.weekly-report-table td:first-child {
+  width: 210px;
+  text-align: left;
+}
+
+.attendance-detail-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attendance-detail-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .topbar .expanding-search,
+  .search-box,
+  .user-search-box,
+  .compact-search {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 40px !important;
+  }
+
+  .topbar .expanding-search.search-expanded,
+  .filter-row .expanding-search.search-expanded,
+  .user-filter-panel .expanding-search.search-expanded,
+  .search-box.search-expanded,
+  .user-search-box.search-expanded,
+  .compact-search.search-expanded {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .search-box input,
+  .user-search-box input,
+  .compact-search input {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  .topbar-actions {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    display: grid !important;
+    gap: 8px !important;
+  }
+
+  .topbar-actions > :not(.user-area):not(#logoutButton),
+  .user-area .user-badge,
+  .top-club-logo {
+    display: none !important;
+  }
+
+  .content,
+  #appShell > main.content {
+    padding-top: 8px !important;
+  }
+
+  .student-action-panel-row td {
+    padding: 0 !important;
+  }
+
+  .student-action-panel {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+    padding: 12px;
+  }
+
+  .student-action-panel .small-button,
+  .student-action-panel a {
+    width: 100%;
+  }
+
+  .weekly-report-scroll {
+    overflow-x: visible;
+    border: 0;
+  }
+
+  .weekly-report-table {
+    min-width: 0;
   }
 }
 
