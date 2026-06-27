@@ -3085,6 +3085,170 @@ tbody tr:hover {
   }
 }
 
+@media print {
+  .print-report:empty,
+  .print-attendance-report:empty,
+  .print-weekly-section:empty,
+  .print-hour-section:empty {
+    display: none !important;
+  }
+
+  .print-weekly-section {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .print-attendance-report tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-empty-message {
+    margin: 0 !important;
+    font-size: 9px !important;
+  }
+}
+
+.manual-attendance-panel {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.manual-attendance-results {
+  display: grid;
+  gap: 8px;
+}
+
+.manual-student-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text-main);
+  text-align: left;
+}
+
+.manual-student-option span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.attendance-status-button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--text-main);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.attendance-status-button:hover {
+  border-color: #94a3b8;
+  background: #eef2f7;
+}
+
+.attendance-status-button.selected.present {
+  border-color: #16a34a;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.attendance-status-button.selected.absent {
+  border-color: #dc2626;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.attendance-status-button.selected.excused {
+  border-color: #d97706;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+@media (max-width: 768px) {
+  .mobile-header {
+    z-index: 10000 !important;
+    pointer-events: auto !important;
+  }
+
+  #mobileMenuButton {
+    position: relative !important;
+    z-index: 10050 !important;
+    pointer-events: auto !important;
+  }
+
+  .topbar {
+    z-index: 70 !important;
+  }
+
+  .topbar-actions,
+  .expanding-search,
+  .search-box,
+  #globalSearch,
+  #attendanceCardSearch {
+    z-index: 80 !important;
+  }
+
+  .sidebar {
+    z-index: 10020 !important;
+  }
+
+  .sidebar-overlay {
+    z-index: 10010 !important;
+  }
+
+  .attendance-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .attendance-status-button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .manual-student-option {
+    display: grid;
+  }
+}
+
+@media print {
+  .print-report:empty,
+  .print-attendance-report:empty,
+  .print-weekly-section:empty,
+  .print-hour-section:empty {
+    display: none !important;
+  }
+
+  .print-weekly-section {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .print-attendance-report tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-empty-message {
+    margin: 0 !important;
+    font-size: 9px !important;
+  }
+}
+
 /* Mobile responsive stability */
 html,
 body {
@@ -5203,5 +5367,29 @@ body {
     min-width: 38mm !important;
     max-width: 42mm !important;
     text-align: left !important;
+  }
+}
+
+@media print {
+  .print-report:empty,
+  .print-attendance-report:empty,
+  .print-weekly-section:empty,
+  .print-hour-section:empty {
+    display: none !important;
+  }
+
+  .print-weekly-section {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .print-attendance-report tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-empty-message {
+    margin: 0 !important;
+    font-size: 9px !important;
   }
 }

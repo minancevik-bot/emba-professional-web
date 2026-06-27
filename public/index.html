@@ -273,6 +273,7 @@
                   <label>Program<input id="studentProgram" value="Yüzme" required></label>
                   <label>Durum<select id="studentStatus"><option>Aktif</option><option>Bekleyen</option><option>Pasif</option></select></label>
                   <label>Kayıt tarihi<input id="studentRegistrationDate" type="date"></label>
+                  <label id="studentPassiveDateWrap" class="hidden">Pasife alınma tarihi<input id="studentPassiveDate" type="date"></label>
                 </div>
               </div>
 
@@ -368,6 +369,13 @@
             <div class="attendance-toolbar">
               <input id="attendanceCardSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
               <span id="attendanceUnmarkedCount" class="soft-pill">0 işaretlenmedi</span>
+              <button id="manualAttendanceToggle" class="secondary" type="button" data-requires="attendance:write">Manuel Öğrenci Ekle</button>
+            </div>
+            <div id="manualAttendancePanel" class="manual-attendance-panel hidden">
+              <label>Öğrenci ara
+                <input id="manualAttendanceSearch" type="search" placeholder="Ad soyad ile ara" autocomplete="off">
+              </label>
+              <div id="manualAttendanceResults" class="manual-attendance-results"></div>
             </div>
             <div id="lessonAttendanceCards" class="lesson-attendance-cards"></div>
             <div class="sticky-save">

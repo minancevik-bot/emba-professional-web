@@ -256,7 +256,7 @@ async function fetchAccessibleStudentMeta(client, user, studentId) {
   const filters = ["s.id = $1"];
   addStudentAccessFilter(filters, params, user, "s");
   const { rows } = await client.query(
-    `SELECT s.id, s.full_name, s.club_id, s.branch_id, s.monthly_fee
+    `SELECT s.id, s.full_name, s.status, s.passive_date, s.club_id, s.branch_id, s.monthly_fee
      FROM students s
      ${whereClause(filters)}
      LIMIT 1`,
@@ -499,18 +499,41 @@ function dateOnly(value) {
   return String(value).slice(0, 10);
 }
 
+function passiveEligibilitySql(alias, paramRef) {
+  return `(
+    ${alias}.status <> 'Pasif'
+    OR ${alias}.passive_date IS NULL
+    OR ${paramRef}::date < (date_trunc('month', ${alias}.passive_date)::date + INTERVAL '1 month')
+  )`;
+}
+
+function studentEligibleForDateSqlCheck(student, targetDate) {
+  if (!student || String(student.status || "") !== "Pasif") return true;
+  if (!student.passive_date) return true;
+  const passiveDate = new Date(`${dateOnly(student.passive_date)}T12:00:00`);
+  const effective = new Date(passiveDate.getFullYear(), passiveDate.getMonth() + 1, 1, 12);
+  const target = new Date(`${dateOnly(targetDate)}T12:00:00`);
+  return target < effective;
+}
+
 function dayNameForDate(value) {
   const date = new Date(`${value || today()}T12:00:00`);
   return new Intl.DateTimeFormat("tr-TR", { weekday: "long" }).format(date);
 }
 
 function normalizeAttendanceStatus(value) {
-  return ["present", "absent"].includes(value) ? value : "present";
+  return ["present", "absent", "excused", "blank"].includes(value) ? value : "present";
 }
 
 function studentPayload(body) {
+  const status = ["Aktif", "Bekleyen", "Pasif"].includes(body.status) ? body.status : "Aktif";
+  const passiveDate = status === "Pasif" ? validDateOrNull(body.passiveDate || today()) : null;
+  if (passiveDate === undefined) {
+    throw httpError("Gecersiz pasife alma tarihi.", 400);
+  }
   return {
-    status: ["Aktif", "Bekleyen", "Pasif"].includes(body.status) ? body.status : "Aktif",
+    status,
+    passiveDate,
     fullName: nullableText(body.fullName),
     program: nullableText(body.program) || "Yüzme",
     level: nullableText(body.level) || "Başlangıç",
@@ -551,6 +574,7 @@ function mapStudent(row, user = null) {
     monthlySportSessions: row.monthly_sport_sessions,
     monthlyFee: Number(row.monthly_fee || 0),
     registrationDate: row.registration_date,
+    passiveDate: row.passive_date,
     note: row.note,
     lessons: row.lessons || [],
     createdAt: row.created_at,
@@ -1450,6 +1474,12 @@ app.get(
       params.push(status);
       filters.push(`s.status = $${params.length}`);
     }
+    const activeOn = request.query.activeOn === undefined ? null : validDateOrNull(request.query.activeOn);
+    if (activeOn === undefined) throw httpError("Gecersiz aktiflik tarihi.", 400);
+    if (activeOn) {
+      params.push(activeOn);
+      filters.push(passiveEligibilitySql("s", `$${params.length}`));
+    }
 
     addStudentAccessFilter(filters, params, request.user, "s");
     const lessonJoin = "LEFT JOIN student_lessons l ON l.student_id = s.id";
@@ -1525,10 +1555,10 @@ app.post(
         `INSERT INTO students (
           status, full_name, program, level, package_code, package_name, parent_name, phone,
           social_media_permission, monthly_total_sessions, monthly_swimming_sessions,
-          monthly_sport_sessions, monthly_fee, registration_date, note, created_by, updated_by,
+          monthly_sport_sessions, monthly_fee, registration_date, passive_date, note, created_by, updated_by,
           club_id, branch_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16, $17, $18)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16, $17, $18, $19)
         RETURNING id, club_id, branch_id`,
         [
           payload.status,
@@ -1545,6 +1575,7 @@ app.post(
           payload.monthlySportSessions,
           payload.monthlyFee,
           payload.registrationDate,
+          payload.passiveDate,
           payload.note,
           request.user.id,
           clubId,
@@ -1597,9 +1628,10 @@ app.patch(
           monthly_sport_sessions = $12,
           monthly_fee = $13,
           registration_date = $14,
-          note = $15,
-          updated_by = $16
-         WHERE id = $17 AND club_id = $18`,
+          passive_date = $15,
+          note = $16,
+          updated_by = $17
+         WHERE id = $18 AND club_id = $19`,
         [
           payload.status,
           payload.fullName,
@@ -1615,6 +1647,7 @@ app.patch(
           payload.monthlySportSessions,
           payload.monthlyFee,
           payload.registrationDate,
+          payload.passiveDate,
           payload.note,
           request.user.id,
           request.params.id,
@@ -1728,7 +1761,11 @@ app.get(
       params.push(period);
       filters.push(`p.period_month = $${params.length}`);
     }
-    filters.push("s.status = 'Aktif'");
+    if (period) {
+      filters.push(passiveEligibilitySql("s", `$${params.length}`));
+    } else {
+      filters.push("s.status = 'Aktif'");
+    }
     addTenantFilter(filters, params, request.user, "p");
     const where = whereClause(filters);
     const { rows } = await query(
@@ -1772,6 +1809,9 @@ app.post(
         const error = new Error("Ogrenci bulunamadi.");
         error.status = 404;
         throw error;
+      }
+      if (!studentEligibleForDateSqlCheck(student, periodMonth)) {
+        throw httpError("Bu ogrenci secilen odeme ayinda aktif listede degil.", 400);
       }
       const { rows } = await client.query(
         `INSERT INTO payments
@@ -1912,8 +1952,8 @@ app.get(
   asyncHandler(async (request, response) => {
     const lessonDate = request.query.date || today();
     const dayOfWeek = dayNameForDate(lessonDate);
-    const params = [dayOfWeek];
-    const filters = ["lower(l.day_of_week) = lower($1)", "s.status = 'Aktif'"];
+    const params = [dayOfWeek, lessonDate];
+    const filters = ["lower(l.day_of_week) = lower($1)", passiveEligibilitySql("s", "$2")];
     addTenantFilter(filters, params, request.user, "s");
     const { rows } = await query(
       `SELECT ${lessonTimeSql("l")} AS start_time, COUNT(DISTINCT s.id)::int AS student_count
@@ -1949,7 +1989,13 @@ app.get(
     }
     const dayOfWeek = dayNameForDate(lessonDate);
     const params = [dayOfWeek, startTime, lessonDate];
-    const filters = ["lower(l.day_of_week) = lower($1)", `${lessonTimeSql("l")} = $2`, "s.status = 'Aktif'"];
+    const filters = [
+      `(
+        (lower(l.day_of_week) = lower($1) AND ${lessonTimeSql("l")} = $2)
+        OR a.id IS NOT NULL
+      )`,
+      passiveEligibilitySql("s", "$3")
+    ];
     addTenantFilter(filters, params, request.user, "s");
     const { rows } = await query(
       `SELECT
@@ -1965,14 +2011,14 @@ app.get(
          a.status AS attendance_status,
          a.note AS attendance_note,
          u.full_name AS recorded_by_name
-       FROM student_lessons l
-       JOIN students s ON s.id = l.student_id
+       FROM students s
        LEFT JOIN clubs c ON c.id = s.club_id
        LEFT JOIN student_lessons all_lessons ON all_lessons.student_id = s.id
+       LEFT JOIN student_lessons l ON l.student_id = s.id
        LEFT JOIN attendance_records a
          ON a.student_id = s.id
         AND a.lesson_date = $3
-        AND a.start_time = ${lessonTimeSql("l")}
+        AND ${lessonTimeSql("a")} = $2
        LEFT JOIN users u ON u.id = a.recorded_by
        ${whereClause(filters)}
        GROUP BY s.id, c.slug, a.status, a.note, u.full_name
@@ -1990,6 +2036,138 @@ app.get(
         recordedByName: row.recorded_by_name || null
       }))
     });
+  })
+);
+
+app.get(
+  "/api/attendance/eligible-students",
+  requireAuth,
+  requirePermission("attendance:read"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const lessonDate = validDateOrNull(request.query.date || today());
+    const startTime = normalizeLessonTime(request.query.time);
+    const search = nullableText(request.query.search);
+    if (!lessonDate || !startTime) {
+      throw httpError("Tarih ve saat secilmelidir.", 400);
+    }
+    const dayOfWeek = dayNameForDate(lessonDate);
+    const params = [lessonDate, startTime, dayOfWeek];
+    const filters = [
+      passiveEligibilitySql("s", "$1"),
+      `NOT EXISTS (
+        SELECT 1 FROM attendance_records a
+        WHERE a.student_id = s.id
+          AND a.lesson_date = $1
+          AND ${lessonTimeSql("a")} = $2
+      )`,
+      `NOT EXISTS (
+        SELECT 1 FROM student_lessons l
+        WHERE l.student_id = s.id
+          AND lower(l.day_of_week) = lower($3)
+          AND ${lessonTimeSql("l")} = $2
+      )`
+    ];
+    if (search) {
+      params.push(`%${search.toLocaleLowerCase("tr-TR")}%`);
+      filters.push(`lower(s.full_name) LIKE $${params.length}`);
+    }
+    addStudentAccessFilter(filters, params, request.user, "s");
+    const { rows } = await query(
+      `SELECT
+         s.*,
+         COALESCE(
+           json_agg(
+             json_build_object('id', all_lessons.id, 'day', all_lessons.day_of_week, 'time', ${lessonTimeSql("all_lessons")})
+             ORDER BY all_lessons.id
+           ) FILTER (WHERE all_lessons.id IS NOT NULL),
+           '[]'
+         ) AS lessons
+       FROM students s
+       LEFT JOIN student_lessons all_lessons ON all_lessons.student_id = s.id
+       ${whereClause(filters)}
+       GROUP BY s.id
+       ORDER BY lower(s.full_name) ASC
+       LIMIT 30`,
+      params
+    );
+    response.json({ students: rows.map((row) => mapStudent(row, request.user)) });
+  })
+);
+
+app.post(
+  "/api/attendance/manual-student",
+  requireAuth,
+  requirePermission("attendance:write"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const lessonDate = validDateOrNull(request.body?.date || request.body?.lessonDate);
+    const startTime = normalizeLessonTime(request.body?.time || request.body?.startTime);
+    const studentId = Number(request.body?.studentId || request.body?.student_id);
+    if (!lessonDate || !startTime || !Number.isInteger(studentId) || studentId <= 0) {
+      throw httpError("Tarih, saat ve ogrenci secilmelidir.", 400);
+    }
+    const scopedClubId = isSuperAdmin(request.user) ? request.user.selectedClubId : getUserClubId(request.user);
+    if (!scopedClubId) throw httpError("Bu kulup yoklamasi icin yetkiniz yok.", 403);
+    const dayOfWeek = dayNameForDate(lessonDate);
+    const result = await transaction(async (client) => {
+      const studentResult = await client.query(
+        `SELECT id, full_name, status, passive_date, club_id, branch_id
+         FROM students
+         WHERE id = $1
+         LIMIT 1`,
+        [studentId]
+      );
+      const student = studentResult.rows[0];
+      if (!student) throw httpError("Ogrenci bulunamadi.", 404);
+      if (String(student.club_id) !== String(scopedClubId)) {
+        throw httpError("Bu kulube ait olmayan ogrenci eklenemez.", 403);
+      }
+      if (!studentEligibleForDateSqlCheck(student, lessonDate)) {
+        throw httpError("Bu ogrenci secilen tarihte aktif yoklama listesine eklenemez.", 400);
+      }
+      const duplicate = await client.query(
+        `SELECT EXISTS (
+           SELECT 1 FROM attendance_records a
+           WHERE a.student_id = $1
+             AND a.lesson_date = $2
+             AND ${lessonTimeSql("a")} = $3
+         ) OR EXISTS (
+           SELECT 1 FROM student_lessons l
+           WHERE l.student_id = $1
+             AND lower(l.day_of_week) = lower($4)
+             AND ${lessonTimeSql("l")} = $3
+         ) AS found`,
+        [studentId, lessonDate, startTime, dayOfWeek]
+      );
+      if (duplicate.rows[0]?.found) {
+        throw httpError("Bu ogrenci secili tarih/saat listesinde zaten var.", 409);
+      }
+      const inserted = await client.query(
+        `INSERT INTO attendance_records
+          (student_id, club_id, branch_id, lesson_date, day_of_week, start_time, status, note, recorded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, 'blank', $7, $8)
+         RETURNING id`,
+        [
+          student.id,
+          student.club_id,
+          student.branch_id,
+          lessonDate,
+          dayOfWeek,
+          startTime,
+          "Manuel yoklama listesine eklendi.",
+          request.user.id
+        ]
+      );
+      await audit(client, request, "manual_add", "attendance_record", inserted.rows[0].id, null, {
+        club_id: student.club_id,
+        student_id: student.id,
+        lessonDate,
+        startTime
+      });
+      return { recordId: inserted.rows[0].id };
+    });
+    response.status(201).json({ ok: true, ...result });
   })
 );
 
@@ -2013,13 +2191,19 @@ app.post(
       const eligible = await client.query(
         `SELECT DISTINCT s.id, s.club_id, s.branch_id
          FROM students s
-         JOIN student_lessons l ON l.student_id = s.id
+         LEFT JOIN student_lessons l ON l.student_id = s.id
+         LEFT JOIN attendance_records a
+           ON a.student_id = s.id
+          AND a.lesson_date = $4
+          AND ${lessonTimeSql("a")} = $3
          WHERE s.club_id = $1
-           AND s.status = 'Aktif'
-           AND lower(l.day_of_week) = lower($2)
-           AND ${lessonTimeSql("l")} = $3
-           AND s.id = ANY($4::bigint[])`,
-        [clubId, dayOfWeek, startTime, ids]
+           AND ${passiveEligibilitySql("s", "$4")}
+           AND (
+             (lower(l.day_of_week) = lower($2) AND ${lessonTimeSql("l")} = $3)
+             OR a.id IS NOT NULL
+           )
+           AND s.id = ANY($5::bigint[])`,
+        [clubId, dayOfWeek, startTime, lessonDate, ids]
       );
       const eligibleById = new Map(eligible.rows.map((row) => [String(row.id), row]));
       const report = { saved: 0, skipped: 0 };

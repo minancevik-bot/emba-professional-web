@@ -26,6 +26,9 @@
     activeView: "superAdminView",
     pendingAttendanceTime: null,
     attendanceTimesOpen: false,
+    manualAttendanceOpen: false,
+    manualAttendanceResults: [],
+    manualAttendanceTimer: null,
     searchTimer: null,
     userSearchTimer: null,
     studentSaving: false
@@ -130,6 +133,10 @@
     attendanceTimeGrid: $("#attendanceTimeGrid"),
     attendanceCardSearch: $("#attendanceCardSearch"),
     attendanceUnmarkedCount: $("#attendanceUnmarkedCount"),
+    manualAttendanceToggle: $("#manualAttendanceToggle"),
+    manualAttendancePanel: $("#manualAttendancePanel"),
+    manualAttendanceSearch: $("#manualAttendanceSearch"),
+    manualAttendanceResults: $("#manualAttendanceResults"),
     lessonAttendanceCards: $("#lessonAttendanceCards"),
     saveBulkAttendanceButton: $("#saveBulkAttendanceButton"),
     clearAttendanceButton: $("#clearAttendanceButton"),
@@ -276,6 +283,15 @@
     const [year, monthNumber] = month.split("-");
     const date = new Date(Number(year), Number(monthNumber) - 1, 1);
     return new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" }).format(date);
+  }
+
+  function studentEligibleForMonth(student, month) {
+    if (String(student?.status || "Aktif") === "Aktif") return true;
+    if (String(student?.status || "") !== "Pasif" || !student?.passiveDate) return false;
+    const passive = new Date(`${dateInputValue(student.passiveDate)}T12:00:00`);
+    const effective = new Date(passive.getFullYear(), passive.getMonth() + 1, 1, 12);
+    const target = new Date(`${month || monthValue()}-01T12:00:00`);
+    return target < effective;
   }
 
   function normalizeTimeValue(value) {
@@ -1194,10 +1210,12 @@
     }
     const q = options.q ?? currentStudentSearch();
     const status = options.status ?? (els.studentStatusFilter?.value || "Aktif");
+    const activeOn = options.activeOn || "";
     const shouldRender = options.render !== false;
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (status && status !== "all") params.set("status", status);
+    if (activeOn) params.set("activeOn", activeOn);
     if (shouldRender) els.studentTable.innerHTML = emptyRow(8, "Veriler yükleniyor...", "Öğrenci listesi hazırlanıyor.");
     const data = await api(`/api/students?${params}`);
     state.students = data.students || [];
@@ -1234,7 +1252,7 @@
           <td data-label="Grup / Saat">${escapeHtml(lessonText(student) || "-")}</td>
           <td data-label="Veli">${escapeHtml(student.parentName || "-")}</td>
           <td data-label="Telefon">${escapeHtml(student.phone || "-")}</td>
-          <td data-label="Durum">${statusBadge(student.status)}</td>
+          <td data-label="Durum">${statusBadge(student.status)}${student.passiveDate ? `<br><span class="muted">Pasif: ${dateLabel(student.passiveDate)}</span>` : ""}</td>
           <td data-label="İşlem">
             <button class="small-button secondary" data-action="toggle-student-actions" data-id="${student.id}" type="button">İşlemler</button>
           </td>
@@ -1258,7 +1276,7 @@
             ${can("payments:read") ? `<button class="small-button secondary" data-action="student-payment" data-id="${student.id}" type="button">Ödeme</button>` : ""}
             <button class="small-button secondary" data-action="student-attendance-detail" data-id="${student.id}" type="button">Yoklama/Detay</button>
             ${phoneLink ? `<a class="small-button whatsapp" href="${phoneLink}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
-            ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${student.id}" type="button">Pasife Al / Sil</button>` : ""}
+            ${can("students:delete") ? `<button class="small-button danger" data-action="delete-student" data-id="${student.id}" type="button">Pasife Al</button>` : ""}
           </div>
         </td>
       </tr>
@@ -1310,6 +1328,7 @@
             <div class="detail-list">
               <div><span>Veli</span><strong>${escapeHtml(student.parentName || "-")}</strong></div>
               <div><span>Telefon</span><strong>${escapeHtml(student.phone || "-")}</strong></div>
+              <div><span>Pasife alınma</span><strong>${student.passiveDate ? dateLabel(student.passiveDate) : "-"}</strong></div>
               ${financeDetail}
               <div><span>Dersler</span><strong>${escapeHtml(lessonText(student) || "-")}</strong></div>
             </div>
@@ -1338,6 +1357,7 @@
     $("#studentAgeGroup").value = "";
     $("#studentAlternatePhone").value = "";
     $("#studentRegistrationDate").value = new Date().toISOString().slice(0, 10);
+    $("#studentPassiveDate").value = new Date().toISOString().slice(0, 10);
     $("#studentStatus").value = "Aktif";
     $("#studentProgram").value = "Yüzme";
     $("#studentLevel").value = "Başlangıç";
@@ -1347,6 +1367,16 @@
     $("#studentSwimmingSessions").value = "8";
     $("#studentSportSessions").value = "0";
     $("#studentMonthlyFee").value = "6000";
+    updatePassiveDateField();
+  }
+
+  function updatePassiveDateField() {
+    const wrap = $("#studentPassiveDateWrap");
+    const input = $("#studentPassiveDate");
+    if (!wrap || !input) return;
+    const passive = $("#studentStatus")?.value === "Pasif";
+    wrap.classList.toggle("hidden", !passive);
+    if (passive && !input.value) input.value = new Date().toISOString().slice(0, 10);
   }
 
   function mountStudentInlineEditor() {
@@ -1391,12 +1421,14 @@
     $("#studentSportSessions").value = student.monthlySportSessions || 0;
     $("#studentMonthlyFee").value = student.monthlyFee || 0;
     $("#studentRegistrationDate").value = String(student.registrationDate || "").slice(0, 10);
+    $("#studentPassiveDate").value = dateInputValue(student.passiveDate) || new Date().toISOString().slice(0, 10);
     $("#studentSocial").value = student.socialMediaPermission ? "true" : "false";
     $("#studentNote").value = student.note || "";
     (student.lessons || []).slice(0, 4).forEach((lesson, index) => {
       $(`#lessonDay${index + 1}`).value = normalizeLessonDay(lesson.day);
       $(`#lessonTime${index + 1}`).value = normalizeTimeValue(lesson.time) || "";
     });
+    updatePassiveDateField();
   }
 
   function readLessons() {
@@ -1428,6 +1460,7 @@
       monthlySportSessions: Number($("#studentSportSessions").value || 0),
       monthlyFee: Number($("#studentMonthlyFee").value || 0),
       registrationDate: $("#studentRegistrationDate").value,
+      passiveDate: $("#studentStatus").value === "Pasif" ? $("#studentPassiveDate").value : null,
       note: $("#studentNote").value.trim(),
       lessons: readLessons()
     };
@@ -1440,6 +1473,34 @@
       payload.monthlyFee = 0;
     }
     return payload;
+  }
+
+  function studentPayloadFromExisting(student, status, passiveDate = null) {
+    return {
+      status,
+      passiveDate: status === "Pasif" ? passiveDate : null,
+      fullName: student.fullName || "",
+      birthYear: student.birthYear || null,
+      ageGroup: student.ageGroup || "",
+      program: student.program || "Yüzme",
+      level: student.level || "Başlangıç",
+      packageCode: student.packageCode || "",
+      packageName: student.packageName || "",
+      parentName: student.parentName || "",
+      phone: student.phone || "",
+      alternatePhone: student.alternatePhone || "",
+      socialMediaPermission: Boolean(student.socialMediaPermission),
+      monthlyTotalSessions: Number(student.monthlyTotalSessions || 0),
+      monthlySwimmingSessions: Number(student.monthlySwimmingSessions || 0),
+      monthlySportSessions: Number(student.monthlySportSessions || 0),
+      monthlyFee: Number(student.monthlyFee || 0),
+      registrationDate: dateInputValue(student.registrationDate) || new Date().toISOString().slice(0, 10),
+      note: student.note || "",
+      lessons: (student.lessons || []).map((lesson) => ({
+        day: normalizeLessonDay(lesson.day),
+        time: normalizeTimeValue(lesson.time)
+      })).filter((lesson) => lesson.day && lesson.time)
+    };
   }
 
   async function showStudentDetail(id) {
@@ -1563,7 +1624,7 @@
       data = await api(`/api/attendance/lesson-students?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`);
       state.lessonAttendance = (data.students || []).map((student) => ({
         ...student,
-        selectedStatus: student.attendanceStatus || null
+        selectedStatus: student.attendanceStatus === "blank" ? null : (student.attendanceStatus || null)
       }));
     } catch (error) {
       state.lessonAttendance = [];
@@ -1575,6 +1636,55 @@
       console.info("Yoklama öğrenci listesi", { date, time, count: state.lessonAttendance.length });
     }
     renderAttendanceCards();
+    renderManualAttendancePanel();
+  }
+
+  function renderManualAttendancePanel() {
+    if (!els.manualAttendancePanel) return;
+    const time = normalizeTimeValue(els.attendanceSlotTime.value);
+    els.manualAttendancePanel.classList.toggle("hidden", !state.manualAttendanceOpen || !time);
+    if (!state.manualAttendanceOpen || !time) return;
+    if (!els.manualAttendanceResults) return;
+    els.manualAttendanceResults.innerHTML = state.manualAttendanceResults.length
+      ? state.manualAttendanceResults.map((student) => `
+          <button class="manual-student-option" data-action="add-manual-attendance-student" data-id="${student.id}" type="button">
+            <strong>${escapeHtml(student.fullName)}</strong>
+            <span>${escapeHtml(student.parentName || "-")} · ${escapeHtml(student.phone || "-")}</span>
+          </button>
+        `).join("")
+      : emptyState("Eklenebilir öğrenci bulunamadı.", "Ad soyad ile arama yapabilir veya farklı saat seçebilirsiniz.");
+  }
+
+  async function loadManualAttendanceCandidates() {
+    const date = els.attendanceDate.value || new Date().toISOString().slice(0, 10);
+    const time = normalizeTimeValue(els.attendanceSlotTime.value);
+    const search = (els.manualAttendanceSearch?.value || "").trim();
+    if (!time) {
+      setNotice("Manuel öğrenci eklemek için önce saat seçin.", true);
+      state.manualAttendanceOpen = false;
+      renderManualAttendancePanel();
+      return;
+    }
+    const params = new URLSearchParams({ date, time });
+    if (search) params.set("search", search);
+    const data = await api(`/api/attendance/eligible-students?${params}`);
+    state.manualAttendanceResults = data.students || [];
+    renderManualAttendancePanel();
+  }
+
+  async function addManualAttendanceStudent(studentId) {
+    const date = els.attendanceDate.value || new Date().toISOString().slice(0, 10);
+    const time = normalizeTimeValue(els.attendanceSlotTime.value);
+    await api("/api/attendance/manual-student", {
+      method: "POST",
+      body: JSON.stringify({ date, time, studentId })
+    });
+    if (els.manualAttendanceSearch) els.manualAttendanceSearch.value = "";
+    state.manualAttendanceResults = [];
+    await loadAttendance();
+    state.manualAttendanceOpen = true;
+    await loadManualAttendanceCandidates();
+    setNotice("Öğrenci seçili yoklama saatine eklendi.");
   }
 
   function renderAttendanceCards() {
@@ -1597,8 +1707,9 @@
               <span>${escapeHtml(student.parentName || "-")} · ${escapeHtml(student.phone || "-")}</span>
             </div>
             <div class="attendance-actions">
-              <button class="small-button good ${student.selectedStatus === "present" ? "selected" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="present" type="button">Geldi</button>
-              <button class="small-button danger ${student.selectedStatus === "absent" ? "selected" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="absent" type="button">Gelmedi</button>
+              <button class="attendance-status-button ${student.selectedStatus === "present" ? "selected present" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="present" type="button" aria-pressed="${student.selectedStatus === "present"}">Geldi</button>
+              <button class="attendance-status-button ${student.selectedStatus === "absent" ? "selected absent" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="absent" type="button" aria-pressed="${student.selectedStatus === "absent"}">Gelmedi</button>
+              <button class="attendance-status-button ${student.selectedStatus === "excused" ? "selected excused" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="excused" type="button" aria-pressed="${student.selectedStatus === "excused"}">Mazeretli</button>
             </div>
           </article>
         `;
@@ -2107,6 +2218,9 @@
         </table>
       </section>
     `;
+    const weeklyTables = rows.length && chunks.length ? chunks.map(renderChunkTable).join("") : `
+      <p class="print-empty-message">Seçilen hafta için yoklama kaydı bulunamadı.</p>
+    `;
     els.printReport.innerHTML = `
       <div class="print-report-page print-attendance-report">
         <header class="print-report-header">
@@ -2123,7 +2237,7 @@
           </div>
         </header>
         <div class="print-legend"><span><strong>+</strong> Geldi</span><span><strong>-</strong> Gelmedi</span><span><strong>M</strong> Mazeretli</span></div>
-        ${chunks.length ? chunks.map(renderChunkTable).join("") : renderChunkTable([], 0)}
+        ${weeklyTables}
       </div>
     `;
   }
@@ -2165,9 +2279,9 @@
   }
 
   function buildPaymentRows() {
-    const activeStudents = state.students.filter((student) => String(student.status || "Aktif") === "Aktif");
-    const byStudent = new Map(activeStudents.map((student) => [String(student.id), student]));
     const month = els.paymentMonthFilter.value || monthValue();
+    const activeStudents = state.students.filter((student) => studentEligibleForMonth(student, month));
+    const byStudent = new Map(activeStudents.map((student) => [String(student.id), student]));
     const rows = state.payments.filter((payment) => byStudent.has(String(payment.studentId))).map((payment) => {
       const student = byStudent.get(String(payment.studentId)) || {};
       return {
@@ -2289,7 +2403,7 @@
     }
     const month = els.paymentMonthFilter.value || monthValue();
     els.paymentMonthFilter.value = month;
-    await loadStudents({ q: "", status: "Aktif", render: false });
+    await loadStudents({ q: "", status: "all", activeOn: `${month}-01`, render: false });
     els.paymentTable.innerHTML = emptyRow(9, "Veriler yükleniyor...", "Ödeme kayıtları hazırlanıyor.");
     const data = await api(`/api/payments?month=${encodeURIComponent(month)}`);
     state.payments = data.payments || [];
@@ -2775,6 +2889,7 @@
   });
   $("#studentBirthYear")?.addEventListener("input", () => updateAgeGroupFromBirthYear(false));
   $("#studentBirthYear")?.addEventListener("blur", () => updateAgeGroupFromBirthYear(true));
+  $("#studentStatus")?.addEventListener("change", updatePassiveDateField);
 
   els.clubCreateUser.addEventListener("change", () => {
     els.clubUserFields.classList.toggle("hidden", !els.clubCreateUser.checked);
@@ -2826,6 +2941,17 @@
       return;
     }
     const id = $("#studentId").value;
+    if ($("#studentStatus").value === "Pasif") {
+      updatePassiveDateField();
+      if (!$("#studentPassiveDate").value) {
+        setNotice("Pasife alma tarihi seçilmelidir.", true);
+        return;
+      }
+      const confirmed = window.confirm(
+        "Bu öğrenci seçilen tarihten sonraki ay itibarıyla ödeme ve yoklama listelerine dahil edilmeyecek. Geçmiş ödeme ve yoklama kayıtları korunacak."
+      );
+      if (!confirmed) return;
+    }
     const method = id ? "PATCH" : "POST";
     const url = id ? `/api/students/${id}` : "/api/students";
     const submitButton = els.studentForm.querySelector('button[type="submit"]');
@@ -2883,7 +3009,9 @@
         els.attendanceSlotTime.value = button.dataset.time || "";
         state.attendanceTimesOpen = false;
         await loadLessonAttendance();
+        if (state.manualAttendanceOpen) await loadManualAttendanceCandidates();
       }
+      if (action === "add-manual-attendance-student") await addManualAttendanceStudent(id);
       if (action === "open-attendance-slot") {
         state.pendingAttendanceTime = button.dataset.time || "";
         switchView("attendanceView");
@@ -2938,11 +3066,24 @@
         await loadUsers();
         setNotice("Kullanıcı güvenli şekilde pasife alındı.");
       }
-      if (action === "delete-student" && window.confirm("Bu öğrenciyi silmek istediğinize emin misiniz?")) {
-        await api(`/api/students/${id}`, { method: "DELETE" });
+      if (action === "delete-student") {
+        const student = state.students.find((item) => String(item.id) === String(id));
+        if (!student) return;
+        const passiveDate = window.prompt("Pasife alınma tarihini girin (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
+        if (!passiveDate) return;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(passiveDate)) {
+          setNotice("Pasife alma tarihi YYYY-MM-DD formatında olmalı.", true);
+          return;
+        }
+        const confirmed = window.confirm("Bu öğrenci seçilen tarihten sonraki ay itibarıyla ödeme ve yoklama listelerine dahil edilmeyecek. Geçmiş ödeme ve yoklama kayıtları korunacak.");
+        if (!confirmed) return;
+        await api(`/api/students/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(studentPayloadFromExisting(student, "Pasif", passiveDate))
+        });
         await loadStudents();
         await loadDashboard();
-        setNotice("Öğrenci silindi.");
+        setNotice("Öğrenci pasife alındı.");
       }
       if (action === "delete-payment" && window.confirm("Bu ödeme kaydı silinsin mi?")) {
         await api(`/api/payments/${id}`, { method: "DELETE" });
@@ -2984,8 +3125,22 @@
   });
 
   els.attendanceDate.addEventListener("change", loadAttendance);
-  els.attendanceSlotTime.addEventListener("change", loadLessonAttendance);
+  els.attendanceSlotTime.addEventListener("change", async () => {
+    await loadLessonAttendance();
+    if (state.manualAttendanceOpen) await loadManualAttendanceCandidates();
+  });
   els.attendanceCardSearch.addEventListener("input", renderAttendanceCards);
+  els.manualAttendanceToggle?.addEventListener("click", async () => {
+    state.manualAttendanceOpen = !state.manualAttendanceOpen;
+    if (state.manualAttendanceOpen) await loadManualAttendanceCandidates();
+    else renderManualAttendancePanel();
+  });
+  els.manualAttendanceSearch?.addEventListener("input", () => {
+    window.clearTimeout(state.manualAttendanceTimer);
+    state.manualAttendanceTimer = window.setTimeout(() => {
+      loadManualAttendanceCandidates().catch((error) => setNotice(error.message, true));
+    }, 220);
+  });
   els.saveBulkAttendanceButton.addEventListener("click", async () => {
     try {
       await saveLessonAttendance();
