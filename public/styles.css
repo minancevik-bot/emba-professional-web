@@ -466,6 +466,16 @@ h3 {
   gap: 8px;
 }
 
+.sidebar-footer {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.logout-nav {
+  color: #fecaca;
+}
+
 .nav-button {
   width: 100%;
   display: flex;
@@ -2451,6 +2461,17 @@ tbody tr:hover {
   }
 }
 
+.student-page-search {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 8px;
+  width: min(100%, 620px);
+}
+
+.student-page-search input {
+  width: 100%;
+}
+
 /* Attendance report sessions */
 .attendance-report-sessions {
   display: grid;
@@ -3106,6 +3127,270 @@ tbody tr:hover {
   .print-empty-message {
     margin: 0 !important;
     font-size: 9px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  #appShell > main.content,
+  .content,
+  main.content {
+    padding: 10px 10px 36px !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .mobile-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30000 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    padding: 6px 10px !important;
+    pointer-events: auto !important;
+  }
+
+  #mobileMenuButton {
+    position: relative !important;
+    z-index: 30010 !important;
+    pointer-events: auto !important;
+    touch-action: manipulation;
+  }
+
+  .sidebar {
+    z-index: 30020 !important;
+    max-width: calc(100vw - 54px) !important;
+  }
+
+  .sidebar-overlay {
+    z-index: 30015 !important;
+  }
+
+  .topbar {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 0 10px !important;
+    padding: 0 !important;
+    pointer-events: auto !important;
+    z-index: 1 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .topbar-actions {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .topbar-actions > :not(#backToClubsButton):not(#clubContextLabel):not(.top-club-logo):not(.user-area),
+  .user-area .user-badge {
+    display: none !important;
+  }
+
+  #logoutButton.logout-nav {
+    min-height: 46px !important;
+    height: auto !important;
+    padding: 0 14px !important;
+    font-size: inherit !important;
+  }
+
+  .student-page-search {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+    order: 10;
+  }
+
+  .student-page-search input,
+  .student-page-search button {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .attendance-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media print {
+  #appShell,
+  #printReport {
+    display: block !important;
+  }
+
+  #printReport,
+  #printReport * {
+    visibility: visible !important;
+  }
+
+  body > :not(#appShell),
+  .mobile-header,
+  .sidebar,
+  .sidebar-overlay,
+  .topbar,
+  .student-page-search,
+  .manual-attendance-panel,
+  .no-print,
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  .print-report:empty {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  body:has(#loginView:not(.hidden)) .mobile-header,
+  body:has(#loginView:not(.hidden)) .sidebar,
+  body:has(#loginView:not(.hidden)) .sidebar-overlay,
+  body:has(#loginView:not(.hidden)) .topbar {
+    display: none !important;
+  }
+
+  .app-shell {
+    display: block !important;
+    min-height: 100dvh !important;
+  }
+
+  .mobile-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30000 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    padding: 6px 10px !important;
+    background: #fff !important;
+    pointer-events: auto !important;
+  }
+
+  #mobileMenuButton {
+    position: relative !important;
+    z-index: 30010 !important;
+    pointer-events: auto !important;
+    touch-action: manipulation;
+  }
+
+  .sidebar {
+    z-index: 30020 !important;
+    max-width: calc(100vw - 54px) !important;
+  }
+
+  .sidebar-overlay {
+    z-index: 30015 !important;
+  }
+
+  .sidebar-open {
+    overflow-x: hidden !important;
+  }
+
+  #appShell > main.content,
+  .content,
+  main.content {
+    padding: 10px 10px 36px !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .topbar {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 0 10px !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+    z-index: 1 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .topbar-actions {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    pointer-events: auto !important;
+  }
+
+  .topbar-actions > :not(#backToClubsButton):not(#clubContextLabel):not(.top-club-logo):not(.user-area),
+  .user-area .user-badge {
+    display: none !important;
+  }
+
+  .student-page-search {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+    order: 10;
+  }
+
+  .student-page-search input,
+  .student-page-search button {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .attendance-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media print {
+  #appShell,
+  #printReport {
+    display: block !important;
+  }
+
+  #printReport,
+  #printReport * {
+    visibility: visible !important;
+  }
+
+  body > :not(#appShell),
+  .mobile-header,
+  .sidebar,
+  .sidebar-overlay,
+  .topbar,
+  .student-page-search,
+  .manual-attendance-panel,
+  .no-print,
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  .print-report:empty {
+    display: none !important;
   }
 }
 
@@ -5391,5 +5676,131 @@ body {
   .print-empty-message {
     margin: 0 !important;
     font-size: 9px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  #appShell > main.content,
+  .content,
+  main.content {
+    padding: 10px 10px 36px !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .mobile-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30000 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    padding: 6px 10px !important;
+    pointer-events: auto !important;
+  }
+
+  #mobileMenuButton {
+    position: relative !important;
+    z-index: 30010 !important;
+    pointer-events: auto !important;
+    touch-action: manipulation;
+  }
+
+  .sidebar {
+    z-index: 30020 !important;
+    max-width: calc(100vw - 54px) !important;
+  }
+
+  .sidebar-overlay {
+    z-index: 30015 !important;
+  }
+
+  .topbar {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 0 10px !important;
+    padding: 0 !important;
+    pointer-events: auto !important;
+    z-index: 1 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .topbar-actions {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .topbar-actions > :not(#backToClubsButton):not(#clubContextLabel):not(.top-club-logo):not(.user-area),
+  .user-area .user-badge {
+    display: none !important;
+  }
+
+  #logoutButton.logout-nav {
+    min-height: 46px !important;
+    height: auto !important;
+    padding: 0 14px !important;
+    font-size: inherit !important;
+  }
+
+  .student-page-search {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+    order: 10;
+  }
+
+  .student-page-search input,
+  .student-page-search button {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .attendance-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media print {
+  #appShell,
+  #printReport {
+    display: block !important;
+  }
+
+  #printReport,
+  #printReport * {
+    visibility: visible !important;
+  }
+
+  body > :not(#appShell),
+  .mobile-header,
+  .sidebar,
+  .sidebar-overlay,
+  .topbar,
+  .student-page-search,
+  .manual-attendance-panel,
+  .no-print,
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  .print-report:empty {
+    display: none !important;
   }
 }

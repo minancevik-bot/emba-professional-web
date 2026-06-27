@@ -80,6 +80,9 @@
           <button class="nav-button" data-view="usersView" data-permission="users:read"><span>Kullanıcılar</span></button>
           <button class="nav-button" data-view="backupView" data-permission="backup:read"><span>Raporlar</span></button>
         </nav>
+        <div class="sidebar-footer">
+          <button id="logoutButton" class="nav-button logout-nav" type="button"><span>Çıkış</span></button>
+        </div>
       </aside>
 
       <main class="content">
@@ -104,13 +107,7 @@
             </div>
             <div class="user-area">
               <span id="userBadge" class="user-badge"></span>
-              <div class="search-box expanding-search">
-                <input id="globalSearch" type="search" placeholder="Öğrenci ara..." autocomplete="off">
-                <button id="globalSearchButton" class="secondary" type="button">Ara</button>
-                <button id="globalSearchClearButton" class="secondary" type="button">Temizle</button>
-              </div>
             </div>
-            <button id="logoutButton" class="secondary" type="button">Çıkış</button>
           </div>
         </header>
 
@@ -250,6 +247,11 @@
               <p id="studentCount">0 kayıt</p>
             </div>
             <div class="filter-row">
+              <div class="student-page-search">
+                <input id="globalSearch" type="search" placeholder="Öğrenci ara..." autocomplete="off">
+                <button id="globalSearchButton" class="secondary" type="button">Ara</button>
+                <button id="globalSearchClearButton" class="secondary" type="button">Temizle</button>
+              </div>
               <select id="studentStatusFilter">
                 <option value="all">Tüm durumlar</option>
                 <option selected>Aktif</option>
@@ -369,7 +371,7 @@
             <div class="attendance-toolbar">
               <input id="attendanceCardSearch" type="search" placeholder="Öğrenci ara" autocomplete="off">
               <span id="attendanceUnmarkedCount" class="soft-pill">0 işaretlenmedi</span>
-              <button id="manualAttendanceToggle" class="secondary" type="button" data-requires="attendance:write">Manuel Öğrenci Ekle</button>
+              <button id="manualAttendanceToggle" class="secondary" type="button" data-requires="attendance:write">Öğrenci Ekle</button>
             </div>
             <div id="manualAttendancePanel" class="manual-attendance-panel hidden">
               <label>Öğrenci ara
@@ -421,7 +423,7 @@
               </label>
               <label id="reportClubFilterWrap" class="hidden">Kulüp<select id="reportClub"><option value="">Tüm kulüpler</option></select></label>
               <button type="submit">Raporu Getir</button>
-              <button id="printAttendanceReportButton" class="secondary" type="button">Günlük Rapor Çıktısı</button>
+              <button id="printAttendanceReportButton" class="secondary" type="button">Rapor Yazdır</button>
             </form>
             <div id="attendanceReportSummary" class="metric-grid compact-metrics"></div>
             <div id="attendanceReportSessions" class="attendance-report-sessions"></div>

@@ -26,6 +26,7 @@
     activeView: "superAdminView",
     pendingAttendanceTime: null,
     attendanceTimesOpen: false,
+    attendanceListCollapsed: false,
     manualAttendanceOpen: false,
     manualAttendanceResults: [],
     manualAttendanceTimer: null,
@@ -734,8 +735,6 @@
     els.clubContextLabel.classList.toggle("hidden", !showClubContext);
     els.clubContextLabel.textContent = showClubContext ? `${selectedName} yönetiliyor` : "";
     els.backToClubsButton.classList.toggle("hidden", !isSuperAdmin() || !state.selectedClub);
-    const globalSearchBox = els.globalSearch?.closest(".search-box") || els.globalSearch;
-    globalSearchBox?.classList.toggle("hidden", isSuperAdmin() && !state.selectedClub);
     if (els.dashboardClubName) els.dashboardClubName.textContent = selectedName || "EMBA Spor Kulübü";
     if (els.dashboardEyebrow) {
       els.dashboardEyebrow.textContent = isCoach() ? "Antrenör paneli" : (selectedName ? "EMBA Spor Kulübü" : "EMBA Spor Kulübü");
@@ -1616,6 +1615,7 @@
     renderAttendanceTimeGrid();
     if (!time) {
       state.lessonAttendance = [];
+      state.attendanceListCollapsed = false;
       renderAttendanceCards();
       return;
     }
@@ -1645,6 +1645,11 @@
     els.manualAttendancePanel.classList.toggle("hidden", !state.manualAttendanceOpen || !time);
     if (!state.manualAttendanceOpen || !time) return;
     if (!els.manualAttendanceResults) return;
+    const search = (els.manualAttendanceSearch?.value || "").trim();
+    if (search.length < 2) {
+      els.manualAttendanceResults.innerHTML = emptyState("Öğrenci adı yazın.", "En az 2 karakter yazınca uygun öğrenciler listelenir.");
+      return;
+    }
     els.manualAttendanceResults.innerHTML = state.manualAttendanceResults.length
       ? state.manualAttendanceResults.map((student) => `
           <button class="manual-student-option" data-action="add-manual-attendance-student" data-id="${student.id}" type="button">
@@ -1665,6 +1670,11 @@
       renderManualAttendancePanel();
       return;
     }
+    if (search.length < 2) {
+      state.manualAttendanceResults = [];
+      renderManualAttendancePanel();
+      return;
+    }
     const params = new URLSearchParams({ date, time });
     if (search) params.set("search", search);
     const data = await api(`/api/attendance/eligible-students?${params}`);
@@ -1682,12 +1692,18 @@
     if (els.manualAttendanceSearch) els.manualAttendanceSearch.value = "";
     state.manualAttendanceResults = [];
     await loadAttendance();
-    state.manualAttendanceOpen = true;
-    await loadManualAttendanceCandidates();
+    state.manualAttendanceOpen = false;
+    renderManualAttendancePanel();
     setNotice("Öğrenci seçili yoklama saatine eklendi.");
   }
 
   function renderAttendanceCards() {
+    if (state.attendanceListCollapsed) {
+      els.lessonAttendanceCards.innerHTML = emptyState("Yoklama kaydedildi.", "Listeyi tekrar açmak için seçili saate yeniden tıklayın.");
+      if (els.attendanceUnmarkedCount) els.attendanceUnmarkedCount.textContent = "Liste kapalı";
+      applyPermissions();
+      return;
+    }
     const search = (els.attendanceCardSearch?.value || "").trim().toLocaleLowerCase("tr-TR");
     const visibleStudents = search
       ? state.lessonAttendance.filter((student) => String(student.fullName || "").toLocaleLowerCase("tr-TR").includes(search))
@@ -1709,7 +1725,6 @@
             <div class="attendance-actions">
               <button class="attendance-status-button ${student.selectedStatus === "present" ? "selected present" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="present" type="button" aria-pressed="${student.selectedStatus === "present"}">Geldi</button>
               <button class="attendance-status-button ${student.selectedStatus === "absent" ? "selected absent" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="absent" type="button" aria-pressed="${student.selectedStatus === "absent"}">Gelmedi</button>
-              <button class="attendance-status-button ${student.selectedStatus === "excused" ? "selected excused" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="excused" type="button" aria-pressed="${student.selectedStatus === "excused"}">Mazeretli</button>
             </div>
           </article>
         `;
@@ -1743,6 +1758,7 @@
         records
       })
     });
+    state.attendanceListCollapsed = true;
     await loadAttendance();
   }
 
@@ -2243,6 +2259,7 @@
   }
 
   async function printAttendanceReport() {
+    if (els.printReport) els.printReport.innerHTML = "";
     const reportType = els.reportType?.value || "daily";
     if (reportType === "weekly") {
       const start = weekStartValue(els.reportWeekStart?.value || els.reportDate.value || new Date().toISOString().slice(0, 10));
@@ -2253,6 +2270,11 @@
       try {
         setNotice("Haftalık rapor çıktısı hazırlanıyor...");
         const data = await api(`/api/reports/attendance-weekly?${weeklyParams}`);
+        if (!(data.students || []).length || !(data.columns || []).length) {
+          if (els.printReport) els.printReport.innerHTML = "";
+          setNotice("Yazdırılacak rapor verisi bulunamadı.", true);
+          return;
+        }
         renderWeeklyPrintReport(data);
         await new Promise((resolve) => window.setTimeout(resolve, 80));
         window.print();
@@ -2269,6 +2291,12 @@
     try {
       setNotice("Rapor çıktısı hazırlanıyor...");
       const data = await api(`/api/reports/attendance-print?${params}`);
+      const printableRows = (data.sessions || []).reduce((sum, session) => sum + ((session.records || []).length), 0);
+      if (!printableRows) {
+        if (els.printReport) els.printReport.innerHTML = "";
+        setNotice("Yazdırılacak rapor verisi bulunamadı.", true);
+        return;
+      }
       renderPrintReport(data);
       await new Promise((resolve) => window.setTimeout(resolve, 80));
       window.print();
@@ -3008,6 +3036,7 @@
       if (action === "select-attendance-time") {
         els.attendanceSlotTime.value = button.dataset.time || "";
         state.attendanceTimesOpen = false;
+        state.attendanceListCollapsed = false;
         await loadLessonAttendance();
         if (state.manualAttendanceOpen) await loadManualAttendanceCandidates();
       }
@@ -3126,6 +3155,7 @@
 
   els.attendanceDate.addEventListener("change", loadAttendance);
   els.attendanceSlotTime.addEventListener("change", async () => {
+    state.attendanceListCollapsed = false;
     await loadLessonAttendance();
     if (state.manualAttendanceOpen) await loadManualAttendanceCandidates();
   });
