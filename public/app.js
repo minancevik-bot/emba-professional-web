@@ -18,6 +18,7 @@
     selectedClub: null,
     importPreview: null,
     studentDetails: {},
+    studentAttendanceSummaries: {},
     openStudentId: null,
     openStudentActionsId: null,
     editingStudentInlineId: null,
@@ -240,6 +241,13 @@
     return new Date().toISOString().slice(0, 7);
   }
 
+  function monthEndValue(month = monthValue()) {
+    const [year, monthNumber] = String(month).split("-").map(Number);
+    if (!year || !monthNumber) return `${monthValue()}-28`;
+    const day = new Date(year, monthNumber, 0).getDate();
+    return `${year}-${String(monthNumber).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
   function dateInputValue(value) {
     if (!value) return "";
     const raw = String(value);
@@ -287,6 +295,11 @@
   }
 
   function studentEligibleForMonth(student, month) {
+    const periodEnd = new Date(`${monthEndValue(month)}T12:00:00`);
+    if (student?.registrationDate) {
+      const registration = new Date(`${dateInputValue(student.registrationDate)}T12:00:00`);
+      if (registration > periodEnd) return false;
+    }
     if (String(student?.status || "Aktif") === "Aktif") return true;
     if (String(student?.status || "") !== "Pasif" || !student?.passiveDate) return false;
     const passive = new Date(`${dateInputValue(student.passiveDate)}T12:00:00`);
@@ -583,6 +596,14 @@
     if (els.sidebarOverlay) els.sidebarOverlay.hidden = true;
   }
 
+  function syncBodyShellState(mode) {
+    const isAuthenticated = mode === "authenticated";
+    const isLogin = mode === "login";
+    document.body.classList.toggle("is-authenticated", isAuthenticated);
+    document.body.classList.toggle("is-login-screen", isLogin);
+    document.body.classList.toggle("is-mobile-shell", isAuthenticated && window.matchMedia("(max-width: 768px)").matches);
+  }
+
   function expandSearch(input) {
     const box = input?.closest(".expanding-search, .search-box, .attendance-toolbar");
     if (!input || !box) return;
@@ -655,7 +676,11 @@
     state.attendance = [];
     state.lessonAttendance = [];
     state.attendanceReport = [];
+    state.studentDetails = {};
+    state.studentAttendanceSummaries = {};
+    state.openStudentId = null;
     closeMobileMenu();
+    syncBodyShellState("login");
     document.body.classList.remove("auth-loading");
     els.loginView.classList.remove("hidden");
     els.appShell.classList.add("hidden");
@@ -665,6 +690,7 @@
   function showLoginWithExistingSession(user) {
     state.user = user;
     closeMobileMenu();
+    syncBodyShellState("login");
     document.body.classList.remove("auth-loading");
     els.loginView.classList.remove("hidden");
     els.appShell.classList.add("hidden");
@@ -771,6 +797,7 @@
   function showApp() {
     els.loginView.classList.add("hidden");
     els.appShell.classList.remove("hidden");
+    syncBodyShellState("authenticated");
     document.body.classList.remove("auth-loading");
     const clubText = currentClubName();
     const roleText = state.user.roleLabel || state.user.role || "";
@@ -845,10 +872,20 @@
     }
     const openCreateStudent = viewId === "studentCreateView";
     if (openCreateStudent) viewId = "studentsView";
+    const previousView = state.activeView;
+    if (previousView && previousView !== viewId) {
+      state.openStudentId = null;
+      state.openStudentActionsId = null;
+      state.editingStudentInlineId = null;
+      state.editingPaymentRowKey = null;
+      restoreStudentEditorHome();
+      els.studentEditor?.classList.add("hidden");
+    }
     state.activeView = viewId;
     updatePageMeta(viewId);
     updateClubContext();
     closeMobileMenu();
+    syncBodyShellState("authenticated");
     $$(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
     $$(".nav-button").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
 
@@ -1289,6 +1326,46 @@
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   }
 
+  function renderMonthlyAttendanceSummary(studentId) {
+    const summary = state.studentAttendanceSummaries[String(studentId)];
+    if (!summary || summary.loading) {
+      return `
+        <section class="student-monthly-summary">
+          <h4>Bu Ay Yoklama Özeti</h4>
+          <p class="muted">Yoklama özeti yükleniyor...</p>
+        </section>
+      `;
+    }
+    if (summary.error) {
+      return `
+        <section class="student-monthly-summary">
+          <h4>Bu Ay Yoklama Özeti</h4>
+          <p class="muted">Yoklama özeti alınamadı.</p>
+        </section>
+      `;
+    }
+    if (!Number(summary.total || 0)) {
+      return `
+        <section class="student-monthly-summary">
+          <h4>Bu Ay Yoklama Özeti</h4>
+          <p class="muted">Bu ay yoklama kaydı bulunamadı.</p>
+        </section>
+      `;
+    }
+    return `
+      <section class="student-monthly-summary">
+        <h4>Bu Ay Yoklama Özeti</h4>
+        <div class="monthly-summary-grid">
+          <div><span>Geldi</span><strong>${Number(summary.present || 0)}</strong></div>
+          <div><span>Gelmedi</span><strong>${Number(summary.absent || 0)}</strong></div>
+          <div><span>Mazeretli</span><strong>${Number(summary.excused || 0)}</strong></div>
+          <div><span>Toplam</span><strong>${Number(summary.total || 0)}</strong></div>
+          <div><span>Devam Oranı</span><strong>%${Number(summary.attendanceRate || 0)}</strong></div>
+        </div>
+      </section>
+    `;
+  }
+
   function renderStudentDetailRow(data) {
     const student = data.student;
     const paymentTotal = (data.payments || []).reduce((sum, item) => sum + Number(item.paidAmount || 0), 0);
@@ -1331,6 +1408,7 @@
               ${financeDetail}
               <div><span>Dersler</span><strong>${escapeHtml(lessonText(student) || "-")}</strong></div>
             </div>
+            ${renderMonthlyAttendanceSummary(student.id)}
             <div class="status-stack">
               ${financeStack || attendanceStack}
             </div>
@@ -1503,13 +1581,26 @@
   }
 
   async function showStudentDetail(id) {
-    if (state.openStudentId === String(id) && state.studentDetails[id]) {
-      state.openStudentId = null;
-      renderStudents();
-      return;
+    const key = String(id);
+    state.openStudentId = key;
+    state.openStudentActionsId = null;
+    if (!state.studentDetails[id]) {
+      const student = state.students.find((item) => String(item.id) === key);
+      if (student) {
+        state.studentDetails[id] = { student, payments: [], attendance: [], attendanceSummary: {} };
+        state.studentAttendanceSummaries[key] = { loading: true };
+        renderStudents();
+      }
+      const data = await api(`/api/students/${id}`);
+      state.studentDetails[id] = data;
     }
-    const data = await api(`/api/students/${id}`);
-    state.studentDetails[id] = data;
+    state.studentAttendanceSummaries[key] = { loading: true };
+    renderStudents();
+    try {
+      state.studentAttendanceSummaries[key] = await api(`/api/students/${id}/attendance-summary?month=${encodeURIComponent(monthValue())}`);
+    } catch (_error) {
+      state.studentAttendanceSummaries[key] = { error: true };
+    }
     state.openStudentId = String(id);
     renderStudents();
   }
@@ -2467,7 +2558,7 @@
     }
     const month = els.paymentMonthFilter.value || monthValue();
     els.paymentMonthFilter.value = month;
-    await loadStudents({ q: "", status: "all", activeOn: `${month}-01`, render: false });
+    await loadStudents({ q: "", status: "all", activeOn: monthEndValue(month), render: false });
     els.paymentTable.innerHTML = emptyRow(9, "Veriler yükleniyor...", "Ödeme kayıtları hazırlanıyor.");
     const data = await api(`/api/payments?month=${encodeURIComponent(month)}`);
     state.payments = data.payments || [];
@@ -2863,6 +2954,9 @@
 
   els.mobileMenuButton.addEventListener("click", openMobileMenu);
   els.sidebarOverlay.addEventListener("click", closeMobileMenu);
+  window.addEventListener("resize", () => {
+    syncBodyShellState(els.appShell?.classList.contains("hidden") ? "login" : "authenticated");
+  });
   [els.brandHomeButton, els.mobileBrandHomeButton].filter(Boolean).forEach((button) => {
     button.addEventListener("click", () => switchView(homeViewForRole()));
   });

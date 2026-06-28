@@ -256,7 +256,7 @@ async function fetchAccessibleStudentMeta(client, user, studentId) {
   const filters = ["s.id = $1"];
   addStudentAccessFilter(filters, params, user, "s");
   const { rows } = await client.query(
-    `SELECT s.id, s.full_name, s.status, s.passive_date, s.club_id, s.branch_id, s.monthly_fee
+    `SELECT s.id, s.full_name, s.status, s.registration_date, s.passive_date, s.club_id, s.branch_id, s.monthly_fee
      FROM students s
      ${whereClause(filters)}
      LIMIT 1`,
@@ -267,7 +267,7 @@ async function fetchAccessibleStudentMeta(client, user, studentId) {
 
 async function fetchPaymentForWrite(client, user, paymentId) {
   const { rows } = await client.query(
-    `SELECT p.*, s.full_name AS student_name
+    `SELECT p.*, s.full_name AS student_name, s.status AS student_status, s.registration_date, s.passive_date
      FROM payments p
      JOIN students s ON s.id = p.student_id
      WHERE p.id = $1
@@ -507,13 +507,55 @@ function passiveEligibilitySql(alias, paramRef) {
   )`;
 }
 
+function registrationEligibilitySql(alias, paramRef) {
+  return `(
+    ${alias}.registration_date IS NULL
+    OR ${alias}.registration_date <= ${paramRef}::date
+  )`;
+}
+
+function registrationMonthEligibilitySql(alias, paramRef) {
+  return `(
+    ${alias}.registration_date IS NULL
+    OR ${alias}.registration_date < (${paramRef}::date + INTERVAL '1 month')
+  )`;
+}
+
+function enrollmentEligibilitySql(alias, paramRef) {
+  return `(${registrationEligibilitySql(alias, paramRef)} AND ${passiveEligibilitySql(alias, paramRef)})`;
+}
+
+function enrollmentMonthEligibilitySql(alias, paramRef) {
+  return `(${registrationMonthEligibilitySql(alias, paramRef)} AND ${passiveEligibilitySql(alias, paramRef)})`;
+}
+
 function studentEligibleForDateSqlCheck(student, targetDate) {
-  if (!student || String(student.status || "") !== "Pasif") return true;
+  if (!student) return false;
+  const target = new Date(`${dateOnly(targetDate)}T12:00:00`);
+  if (student.registration_date) {
+    const registration = new Date(`${dateOnly(student.registration_date)}T12:00:00`);
+    if (target < registration) return false;
+  }
+  if (String(student.status || "") !== "Pasif") return true;
   if (!student.passive_date) return true;
   const passiveDate = new Date(`${dateOnly(student.passive_date)}T12:00:00`);
   const effective = new Date(passiveDate.getFullYear(), passiveDate.getMonth() + 1, 1, 12);
-  const target = new Date(`${dateOnly(targetDate)}T12:00:00`);
   return target < effective;
+}
+
+function studentEligibleForPeriodMonthCheck(student, periodMonth) {
+  if (!student) return false;
+  const periodStart = new Date(`${dateOnly(periodMonth)}T12:00:00`);
+  const periodEndExclusive = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 1, 12);
+  if (student.registration_date) {
+    const registration = new Date(`${dateOnly(student.registration_date)}T12:00:00`);
+    if (registration >= periodEndExclusive) return false;
+  }
+  if (String(student.status || "") !== "Pasif") return true;
+  if (!student.passive_date) return true;
+  const passiveDate = new Date(`${dateOnly(student.passive_date)}T12:00:00`);
+  const effective = new Date(passiveDate.getFullYear(), passiveDate.getMonth() + 1, 1, 12);
+  return periodStart < effective;
 }
 
 function dayNameForDate(value) {
@@ -1478,7 +1520,7 @@ app.get(
     if (activeOn === undefined) throw httpError("Gecersiz aktiflik tarihi.", 400);
     if (activeOn) {
       params.push(activeOn);
-      filters.push(passiveEligibilitySql("s", `$${params.length}`));
+      filters.push(enrollmentEligibilitySql("s", `$${params.length}`));
     }
 
     addStudentAccessFilter(filters, params, request.user, "s");
@@ -1749,6 +1791,63 @@ app.get(
 );
 
 app.get(
+  "/api/students/:id/attendance-summary",
+  requireAuth,
+  requirePermission("students:read"),
+  requireSelectedClubForSuperAdmin,
+  asyncHandler(async (request, response) => {
+    const month = validPeriodMonth(request.query.month || new Date().toISOString().slice(0, 7));
+    if (!month) throw httpError("Gecersiz ay.", 400);
+    const client = await pool.connect();
+    try {
+      const exists = await client.query("SELECT id FROM students WHERE id = $1 LIMIT 1", [request.params.id]);
+      if (!exists.rows[0]) {
+        response.status(404).json({ error: "Ogrenci bulunamadi." });
+        return;
+      }
+      const student = await fetchAccessibleStudentMeta(client, request.user, request.params.id);
+      if (!student) {
+        response.status(403).json({ error: "Bu ogrencinin yoklama ozetini gorme yetkiniz yok." });
+        return;
+      }
+      const params = [request.params.id, month];
+      const filters = [
+        "a.student_id = $1",
+        "a.lesson_date >= $2::date",
+        "a.lesson_date < ($2::date + INTERVAL '1 month')"
+      ];
+      addAttendanceAccessFilter(filters, params, request.user, "a");
+      const { rows } = await client.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE a.status = 'present')::int AS present,
+           COUNT(*) FILTER (WHERE a.status = 'absent')::int AS absent,
+           COUNT(*) FILTER (WHERE a.status = 'excused')::int AS excused,
+           COUNT(*) FILTER (WHERE a.status IN ('present', 'absent', 'excused'))::int AS total
+         FROM attendance_records a
+         ${whereClause(filters)}`,
+        params
+      );
+      const summary = rows[0] || {};
+      const present = Number(summary.present || 0);
+      const absent = Number(summary.absent || 0);
+      const excused = Number(summary.excused || 0);
+      const total = Number(summary.total || 0);
+      response.json({
+        ok: true,
+        month: month.slice(0, 7),
+        present,
+        absent,
+        excused,
+        total,
+        attendanceRate: total ? Math.round((present / total) * 100) : 0
+      });
+    } finally {
+      client.release();
+    }
+  })
+);
+
+app.get(
   "/api/payments",
   requireAuth,
   requirePermission("payments:read"),
@@ -1762,7 +1861,7 @@ app.get(
       filters.push(`p.period_month = $${params.length}`);
     }
     if (period) {
-      filters.push(passiveEligibilitySql("s", `$${params.length}`));
+      filters.push(enrollmentMonthEligibilitySql("s", `$${params.length}`));
     } else {
       filters.push("s.status = 'Aktif'");
     }
@@ -1810,7 +1909,7 @@ app.post(
         error.status = 404;
         throw error;
       }
-      if (!studentEligibleForDateSqlCheck(student, periodMonth)) {
+      if (!studentEligibleForPeriodMonthCheck(student, periodMonth)) {
         throw httpError("Bu ogrenci secilen odeme ayinda aktif listede degil.", 400);
       }
       const { rows } = await client.query(
@@ -1888,6 +1987,13 @@ app.patch(
 
       const method = request.body.method === undefined ? before.method : nullableText(request.body.method);
       const description = request.body.description === undefined ? before.description : nullableText(request.body.description);
+      if (!studentEligibleForPeriodMonthCheck({
+        status: before.student_status,
+        registration_date: before.registration_date,
+        passive_date: before.passive_date
+      }, periodMonth)) {
+        throw httpError("Bu ogrenci secilen odeme ayinda aktif listede degil.", 400);
+      }
 
       const { rows } = await client.query(
         `UPDATE payments SET
@@ -1953,7 +2059,7 @@ app.get(
     const lessonDate = request.query.date || today();
     const dayOfWeek = dayNameForDate(lessonDate);
     const params = [dayOfWeek, lessonDate];
-    const filters = ["lower(l.day_of_week) = lower($1)", passiveEligibilitySql("s", "$2")];
+    const filters = ["lower(l.day_of_week) = lower($1)", enrollmentEligibilitySql("s", "$2")];
     addTenantFilter(filters, params, request.user, "s");
     const { rows } = await query(
       `SELECT ${lessonTimeSql("l")} AS start_time, COUNT(DISTINCT s.id)::int AS student_count
@@ -1994,7 +2100,7 @@ app.get(
         (lower(l.day_of_week) = lower($1) AND ${lessonTimeSql("l")} = $2)
         OR a.id IS NOT NULL
       )`,
-      passiveEligibilitySql("s", "$3")
+      enrollmentEligibilitySql("s", "$3")
     ];
     addTenantFilter(filters, params, request.user, "s");
     const { rows } = await query(
@@ -2054,7 +2160,7 @@ app.get(
     const dayOfWeek = dayNameForDate(lessonDate);
     const params = [lessonDate, startTime, dayOfWeek];
     const filters = [
-      passiveEligibilitySql("s", "$1"),
+      enrollmentEligibilitySql("s", "$1"),
       `NOT EXISTS (
         SELECT 1 FROM attendance_records a
         WHERE a.student_id = s.id
@@ -2112,7 +2218,7 @@ app.post(
     const dayOfWeek = dayNameForDate(lessonDate);
     const result = await transaction(async (client) => {
       const studentResult = await client.query(
-        `SELECT id, full_name, status, passive_date, club_id, branch_id
+        `SELECT id, full_name, status, registration_date, passive_date, club_id, branch_id
          FROM students
          WHERE id = $1
          LIMIT 1`,
@@ -2197,7 +2303,7 @@ app.post(
           AND a.lesson_date = $4
           AND ${lessonTimeSql("a")} = $3
          WHERE s.club_id = $1
-           AND ${passiveEligibilitySql("s", "$4")}
+           AND ${enrollmentEligibilitySql("s", "$4")}
            AND (
              (lower(l.day_of_week) = lower($2) AND ${lessonTimeSql("l")} = $3)
              OR a.id IS NOT NULL

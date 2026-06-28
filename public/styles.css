@@ -3214,6 +3214,156 @@ tbody tr:hover {
   }
 }
 
+@media (max-width: 768px) {
+  body.is-login-screen,
+  body.is-authenticated,
+  body.is-mobile-shell {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 100dvh !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-login-screen #appShell,
+  body.is-login-screen .app-shell,
+  body.is-login-screen .mobile-header,
+  body.is-login-screen .sidebar,
+  body.is-login-screen .sidebar-overlay,
+  body.is-login-screen .topbar,
+  body.is-login-screen .student-page-search,
+  body.is-login-screen #logoutButton {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.is-authenticated #loginView {
+    display: none !important;
+  }
+
+  body.is-authenticated #appShell,
+  body.is-authenticated .app-shell {
+    display: block !important;
+    min-height: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-authenticated .mobile-header {
+    display: flex !important;
+    position: sticky !important;
+    top: 0 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+    padding: 6px 10px !important;
+    align-items: center !important;
+    z-index: 30000 !important;
+  }
+
+  body.is-authenticated #appShell > main.content,
+  body.is-authenticated main.content,
+  body.is-authenticated .content {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 12px 10px 36px !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-authenticated .topbar {
+    display: none !important;
+    position: static !important;
+    top: auto !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+  }
+
+  body.is-authenticated .view,
+  body.is-authenticated .view.active,
+  body.is-authenticated .dashboard,
+  body.is-authenticated .page,
+  body.is-authenticated .page-content,
+  body.is-authenticated .main-content,
+  body.is-authenticated .container {
+    min-height: 0 !important;
+    height: auto !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    transform: none !important;
+  }
+
+  body.is-authenticated .view.active > :first-child {
+    margin-top: 0 !important;
+  }
+
+  body.is-authenticated .dashboard-hero {
+    min-height: 0 !important;
+    margin: 0 0 12px !important;
+    padding: 14px !important;
+    gap: 12px !important;
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+  }
+
+  body.is-authenticated .dashboard-hero img,
+  body.is-authenticated .dashboard-hero .fallback-logo {
+    width: 76px !important;
+    height: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    max-height: 76px !important;
+    object-fit: contain !important;
+  }
+
+  body.is-authenticated .topbar-actions,
+  body.is-authenticated .topbar .search-box,
+  body.is-authenticated .topbar .expanding-search,
+  body.is-authenticated .global-search,
+  body.is-authenticated .shell-header,
+  body.is-authenticated .mobile-spacer,
+  body.is-authenticated .header-spacer,
+  body.is-authenticated .header-push,
+  body.is-authenticated .top-spacer,
+  body.is-authenticated .layout-spacer,
+  body.is-authenticated .spacer,
+  body.is-authenticated [data-spacer] {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.is-authenticated #studentsView .student-page-search {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    gap: 8px !important;
+    margin: 0 !important;
+  }
+
+  body.is-authenticated .view:not(#studentsView) .student-page-search {
+    display: none !important;
+  }
+
+  .monthly-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media print {
   body * {
     visibility: hidden !important;
@@ -3356,6 +3506,386 @@ tbody tr:hover {
   body.attendance-printing #attendancePrintRoot th::before {
     content: none !important;
     display: none !important;
+  }
+}
+
+.student-monthly-summary {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.student-monthly-summary h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.monthly-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.monthly-summary-grid div {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.monthly-summary-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.monthly-summary-grid strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+@media (max-width: 768px) {
+  body.is-login-screen,
+  body.is-authenticated,
+  body.is-mobile-shell {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 100dvh !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-login-screen #appShell,
+  body.is-login-screen .app-shell,
+  body.is-login-screen .mobile-header,
+  body.is-login-screen .sidebar,
+  body.is-login-screen .sidebar-overlay,
+  body.is-login-screen .topbar,
+  body.is-login-screen .student-page-search,
+  body.is-login-screen #logoutButton {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.is-authenticated #loginView {
+    display: none !important;
+  }
+
+  body.is-authenticated #appShell,
+  body.is-authenticated .app-shell {
+    display: block !important;
+    min-height: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-authenticated .mobile-header {
+    display: flex !important;
+    position: sticky !important;
+    top: 0 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+    padding: 6px 10px !important;
+    align-items: center !important;
+    z-index: 30000 !important;
+  }
+
+  body.is-authenticated #appShell > main.content,
+  body.is-authenticated main.content,
+  body.is-authenticated .content {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 12px 10px 36px !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-authenticated .topbar {
+    display: none !important;
+    position: static !important;
+    top: auto !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+  }
+
+  body.is-authenticated .view,
+  body.is-authenticated .view.active,
+  body.is-authenticated .dashboard,
+  body.is-authenticated .page,
+  body.is-authenticated .page-content,
+  body.is-authenticated .main-content,
+  body.is-authenticated .container {
+    min-height: 0 !important;
+    height: auto !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    transform: none !important;
+  }
+
+  body.is-authenticated .view.active > :first-child {
+    margin-top: 0 !important;
+  }
+
+  body.is-authenticated .dashboard-hero {
+    min-height: 0 !important;
+    margin: 0 0 12px !important;
+    padding: 14px !important;
+    gap: 12px !important;
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+  }
+
+  body.is-authenticated .dashboard-hero img,
+  body.is-authenticated .dashboard-hero .fallback-logo {
+    width: 76px !important;
+    height: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    max-height: 76px !important;
+    object-fit: contain !important;
+  }
+
+  body.is-authenticated .topbar-actions,
+  body.is-authenticated .topbar .search-box,
+  body.is-authenticated .topbar .expanding-search,
+  body.is-authenticated .global-search,
+  body.is-authenticated .shell-header,
+  body.is-authenticated .mobile-spacer,
+  body.is-authenticated .header-spacer,
+  body.is-authenticated .header-push,
+  body.is-authenticated .top-spacer,
+  body.is-authenticated .layout-spacer,
+  body.is-authenticated .spacer,
+  body.is-authenticated [data-spacer] {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.is-authenticated #studentsView .student-page-search {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    gap: 8px !important;
+    margin: 0 !important;
+  }
+
+  body.is-authenticated .view:not(#studentsView) .student-page-search {
+    display: none !important;
+  }
+
+  .monthly-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.student-monthly-summary {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.student-monthly-summary h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.monthly-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.monthly-summary-grid div {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.monthly-summary-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.monthly-summary-grid strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+@media (max-width: 768px) {
+  body.is-login-screen,
+  body.is-authenticated,
+  body.is-mobile-shell {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 100dvh !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-login-screen #appShell,
+  body.is-login-screen .app-shell,
+  body.is-login-screen .mobile-header,
+  body.is-login-screen .sidebar,
+  body.is-login-screen .sidebar-overlay,
+  body.is-login-screen .topbar,
+  body.is-login-screen .student-page-search,
+  body.is-login-screen #logoutButton {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.is-authenticated #loginView {
+    display: none !important;
+  }
+
+  body.is-authenticated #appShell,
+  body.is-authenticated .app-shell {
+    display: block !important;
+    min-height: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-authenticated .mobile-header {
+    display: flex !important;
+    position: sticky !important;
+    top: 0 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+    padding: 6px 10px !important;
+    align-items: center !important;
+    z-index: 30000 !important;
+  }
+
+  body.is-authenticated #appShell > main.content,
+  body.is-authenticated main.content,
+  body.is-authenticated .content {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 12px 10px 36px !important;
+    overflow-x: hidden !important;
+  }
+
+  body.is-authenticated .topbar {
+    display: none !important;
+    position: static !important;
+    top: auto !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+  }
+
+  body.is-authenticated .view,
+  body.is-authenticated .view.active,
+  body.is-authenticated .dashboard,
+  body.is-authenticated .page,
+  body.is-authenticated .page-content,
+  body.is-authenticated .main-content,
+  body.is-authenticated .container {
+    min-height: 0 !important;
+    height: auto !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    transform: none !important;
+  }
+
+  body.is-authenticated .view.active > :first-child {
+    margin-top: 0 !important;
+  }
+
+  body.is-authenticated .dashboard-hero {
+    min-height: 0 !important;
+    margin: 0 0 12px !important;
+    padding: 14px !important;
+    gap: 12px !important;
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+  }
+
+  body.is-authenticated .dashboard-hero img,
+  body.is-authenticated .dashboard-hero .fallback-logo {
+    width: 76px !important;
+    height: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    max-height: 76px !important;
+    object-fit: contain !important;
+  }
+
+  body.is-authenticated .topbar-actions,
+  body.is-authenticated .topbar .search-box,
+  body.is-authenticated .topbar .expanding-search,
+  body.is-authenticated .global-search,
+  body.is-authenticated .shell-header,
+  body.is-authenticated .mobile-spacer,
+  body.is-authenticated .header-spacer,
+  body.is-authenticated .header-push,
+  body.is-authenticated .top-spacer,
+  body.is-authenticated .layout-spacer,
+  body.is-authenticated .spacer,
+  body.is-authenticated [data-spacer] {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.is-authenticated #studentsView .student-page-search {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    gap: 8px !important;
+    margin: 0 !important;
+  }
+
+  body.is-authenticated .view:not(#studentsView) .student-page-search {
+    display: none !important;
+  }
+
+  .monthly-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -6048,6 +6578,39 @@ body {
   .expanding-search input {
     z-index: 9999 !important;
     pointer-events: auto !important;
+  }
+}
+
+@media (max-width: 768px) {
+  body.is-authenticated .content,
+  body.is-authenticated main.content,
+  body.is-authenticated #appShell > main.content,
+  body.is-authenticated .mobile-header + .sidebar + main {
+    margin-top: 0 !important;
+    padding-top: 12px !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  body.is-authenticated .topbar {
+    display: none !important;
+    position: static !important;
+    top: auto !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+  }
+
+  body.is-authenticated .dashboard-hero,
+  body.is-authenticated .section-head,
+  body.is-authenticated .panel,
+  body.is-authenticated .table-card,
+  body.is-authenticated .attendance-report-panel {
+    margin-top: 0 !important;
   }
 }
 
