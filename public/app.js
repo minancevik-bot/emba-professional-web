@@ -3013,7 +3013,8 @@
       await loadDashboard();
       setNotice(id ? "Öğrenci güncellendi." : "Öğrenci kaydedildi.");
     } catch (error) {
-      setNotice(error.message, true);
+      const detail = error?.message ? ` ${error.message}` : "";
+      setNotice(`Öğrenci kaydedilirken hata oluştu.${detail}`, true);
     } finally {
       state.studentSaving = false;
       if (submitButton) {

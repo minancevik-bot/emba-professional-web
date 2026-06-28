@@ -1558,7 +1558,7 @@ app.post(
           monthly_sport_sessions, monthly_fee, registration_date, passive_date, note, created_by, updated_by,
           club_id, branch_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16, $17, $18, $19)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17, $18, $19)
         RETURNING id, club_id, branch_id`,
         [
           payload.status,
