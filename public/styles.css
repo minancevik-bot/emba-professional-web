@@ -1,7 +1,24 @@
+:root {
+  --primary-color: #0f172a;
+  --secondary-color: #0284c7;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+  --bg-color: #f8fafc;
+  --card-bg: #ffffff;
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --btn-neutral: #e2e8f0;
+  --header-height-mobile: 52px;
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
 html, body {
   margin: 0 !important;
   padding: 0 !important;
   width: 100vw;
+  background-color: var(--bg-color);
+  font-family: 'Inter', sans-serif;
   overflow-x: hidden;
   /* iOS çentik ve alt bar uyumluluğu */
   padding-top: env(safe-area-inset-top) !important;
@@ -3506,6 +3523,240 @@ tbody tr:hover {
   body.attendance-printing #attendancePrintRoot th::before {
     content: none !important;
     display: none !important;
+  }
+}
+
+/* EMBA frontend layout refresh */
+:root {
+  --primary-color: #0f172a;
+  --secondary-color: #0284c7;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+  --bg-color: #f8fafc;
+  --card-bg: #ffffff;
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --btn-neutral: #e2e8f0;
+  --header-height-mobile: 52px;
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+body.is-login-screen .sidebar,
+body.is-login-screen .mobile-header,
+body.is-login-screen .topbar,
+body.is-login-screen #globalSearch,
+body.is-login-screen .logout-btn,
+body.is-login-screen #appShell {
+  display: none !important;
+}
+
+body.is-login-screen main.content {
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  transform: none !important;
+}
+
+.att-btn {
+  background-color: var(--btn-neutral);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-weight: 800;
+  border: none;
+}
+
+.logout-menu {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.att-btn.present.active,
+.att-btn.present.selected {
+  background-color: var(--success-color);
+  color: #fff;
+}
+
+.att-btn.absent.active,
+.att-btn.absent.selected {
+  background-color: var(--danger-color);
+  color: #fff;
+}
+
+.att-btn.excused,
+.attendance-status-button.excused,
+[data-status="excused"] {
+  display: none !important;
+}
+
+.student-row,
+.student-action-panel-row,
+.student-detail-row {
+  position: static !important;
+}
+
+.student-detail-row .inline-detail {
+  position: static !important;
+}
+
+@media (min-width: 769px) {
+  #studentsView tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  #studentsView tr.student-row,
+  #studentsView tr.student-action-panel-row,
+  #studentsView tr.student-detail-row,
+  #studentsView tr.student-inline-editor-row {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+  }
+}
+
+@media (max-width: 768px) {
+  body.is-authenticated .topbar {
+    display: none !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.is-authenticated .mobile-header {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--header-height-mobile);
+    background-color: var(--primary-color);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 999;
+  }
+
+  .hamburger-menu,
+  #mobileMenuButton {
+    z-index: 1000;
+    padding: 10px;
+    display: block;
+  }
+
+  body.is-authenticated main.content,
+  body.is-authenticated #appShell > main.content {
+    margin-top: var(--header-height-mobile) !important;
+    padding: 12px !important;
+    min-height: auto !important;
+    transform: none !important;
+  }
+
+  .view,
+  .page-content,
+  .dashboard {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  #studentsView tbody,
+  #paymentsView tbody,
+  #attendanceView tbody {
+    display: block;
+  }
+
+  #studentsView tr,
+  #paymentsView tr,
+  #attendanceView tr {
+    display: block;
+    width: 100%;
+    margin-bottom: 15px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 10px;
+    background: var(--card-bg);
+    box-shadow: var(--card-shadow);
+  }
+
+  #studentsView td,
+  #paymentsView td,
+  #attendanceView td {
+    display: flex !important;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    border: 0 !important;
+    padding: 6px 0 !important;
+    text-align: right;
+  }
+
+  #studentsView td::before,
+  #paymentsView td::before,
+  #attendanceView td::before {
+    content: attr(data-label);
+    flex: 0 0 42%;
+    color: var(--text-muted);
+    font-weight: 800;
+    text-align: left;
+  }
+
+  #paymentsView td:last-child,
+  #studentsView td:last-child {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #paymentsView button,
+  #studentsView button {
+    width: 100%;
+  }
+
+  .attendance-actions {
+    display: flex !important;
+    gap: 8px;
+  }
+
+  .attendance-actions .att-btn {
+    flex: 1 1 0;
+  }
+}
+
+@media print {
+  body.is-authenticated main.content {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .sidebar,
+  .mobile-header,
+  .topbar,
+  .hamburger-menu,
+  .search-area,
+  .print-btn,
+  #appShell > div:not(main) {
+    display: none !important;
+  }
+
+  @page {
+    margin: 10mm;
+  }
+
+  table.report-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  table.report-table th,
+  table.report-table td {
+    border: 1px solid #000;
+    padding: 6px;
   }
 }
 
