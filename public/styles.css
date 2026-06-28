@@ -3359,6 +3359,198 @@ tbody tr:hover {
   }
 }
 
+@media (max-width: 768px) {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100dvh !important;
+    overflow-x: hidden !important;
+  }
+
+  #loginView.hidden,
+  #appShell.hidden {
+    display: none !important;
+  }
+
+  body:has(#loginView:not(.hidden)) {
+    display: block !important;
+    min-height: 100dvh !important;
+    padding: 0 !important;
+  }
+
+  body:has(#loginView:not(.hidden)) #appShell,
+  body:has(#loginView:not(.hidden)) .mobile-header,
+  body:has(#loginView:not(.hidden)) .sidebar,
+  body:has(#loginView:not(.hidden)) .sidebar-overlay,
+  body:has(#loginView:not(.hidden)) .topbar {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body:has(#loginView:not(.hidden)) #loginView {
+    display: grid !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    place-items: center !important;
+  }
+
+  #appShell {
+    display: block !important;
+    min-height: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    overflow-x: hidden !important;
+  }
+
+  .mobile-header {
+    display: flex !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30000 !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+    padding: 6px 10px !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .mobile-header img {
+    max-height: 36px !important;
+    width: auto !important;
+    object-fit: contain !important;
+  }
+
+  #mobileMenuButton {
+    position: relative !important;
+    z-index: 30010 !important;
+    pointer-events: auto !important;
+  }
+
+  #appShell > main.content,
+  main.content,
+  .content {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 12px 10px 36px !important;
+    overflow-x: hidden !important;
+  }
+
+  .topbar {
+    display: none !important;
+    position: static !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .topbar-actions,
+  .topbar .search-box,
+  .topbar .expanding-search,
+  .global-search,
+  .shell-header,
+  .mobile-spacer,
+  .header-spacer,
+  .header-push,
+  .top-spacer,
+  .layout-spacer,
+  .spacer,
+  [data-spacer] {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .view,
+  .view.active,
+  .dashboard,
+  .page,
+  .page-content,
+  .main-content,
+  .container {
+    min-height: 0 !important;
+    height: auto !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  .view.active > :first-child {
+    margin-top: 0 !important;
+  }
+
+  .dashboard-hero {
+    min-height: 0 !important;
+    margin: 0 0 12px !important;
+    padding: 14px !important;
+    gap: 12px !important;
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+    align-items: center !important;
+  }
+
+  .dashboard-hero img,
+  .dashboard-hero .fallback-logo {
+    width: 76px !important;
+    height: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    max-height: 76px !important;
+    object-fit: contain !important;
+  }
+
+  .dashboard-hero button {
+    grid-column: 1 / -1 !important;
+    margin-top: 0 !important;
+  }
+
+  .metric-grid,
+  .dashboard-grid,
+  .club-grid,
+  .super-admin-layout {
+    gap: 12px !important;
+    margin-top: 0 !important;
+  }
+
+  .section-head,
+  .panel,
+  .detail-panel,
+  .table-card,
+  .form-section,
+  .attendance-report-panel {
+    margin-top: 0 !important;
+  }
+
+  #studentsView .student-page-search {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 8px !important;
+    margin: 0 !important;
+  }
+
+  #studentsView .student-page-search input,
+  #studentsView .student-page-search button {
+    width: 100% !important;
+    min-height: 40px !important;
+  }
+}
+
 @media print {
   html,
   body {
