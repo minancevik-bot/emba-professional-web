@@ -2262,17 +2262,39 @@
     if (!els.printReport) return false;
     const table = els.printReport.querySelector("table");
     const rows = els.printReport.querySelectorAll("tbody tr");
-    return Boolean(table && rows.length);
+    return Boolean(table && rows.length && els.printReport.textContent.trim());
+  }
+
+  function waitForPrintLayout() {
+    return new Promise((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.setTimeout(resolve, 60);
+        });
+      });
+    });
+  }
+
+  function closeAttendancePrintMode() {
+    document.body.classList.remove("attendance-printing");
+    els.printReport?.setAttribute("aria-hidden", "true");
   }
 
   async function printRenderedAttendanceReport() {
-    await new Promise((resolve) => window.setTimeout(resolve, 80));
+    if (els.printReport) {
+      els.printReport.removeAttribute("aria-hidden");
+    }
+    document.body.classList.add("attendance-printing");
+    await waitForPrintLayout();
     if (!hasPrintableAttendanceReport()) {
+      closeAttendancePrintMode();
       if (els.printReport) els.printReport.innerHTML = "";
       setNotice("Yazdırılacak rapor verisi bulunamadı.", true);
       return;
     }
+    window.addEventListener("afterprint", closeAttendancePrintMode, { once: true });
     window.print();
+    window.setTimeout(closeAttendancePrintMode, 1200);
     setNotice("");
   }
 

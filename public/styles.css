@@ -3287,6 +3287,294 @@ tbody tr:hover {
   }
 }
 
+@media print {
+  body.attendance-printing > :not(#attendancePrintRoot) {
+    display: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot,
+  body.attendance-printing #attendancePrintRoot * {
+    display: revert;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #000 !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    transform: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    border: 1px solid #000 !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot thead {
+    display: table-header-group !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot tbody {
+    display: table-row-group !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot tr {
+    display: table-row !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot th,
+  body.attendance-printing #attendancePrintRoot td {
+    display: table-cell !important;
+    border: 1px solid #000 !important;
+    padding: 2px 3px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+    white-space: normal !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot th:first-child,
+  body.attendance-printing #attendancePrintRoot td:first-child {
+    width: 34mm !important;
+    text-align: left !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot td::before,
+  body.attendance-printing #attendancePrintRoot th::before {
+    content: none !important;
+    display: none !important;
+  }
+}
+
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.attendance-printing > :not(#attendancePrintRoot) {
+    display: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot,
+  body.attendance-printing #attendancePrintRoot * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+    transform: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot .print-report-page,
+  body.attendance-printing #attendancePrintRoot .print-attendance-report,
+  body.attendance-printing #attendancePrintRoot .print-weekly-section {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 0 3mm !important;
+    padding: 0 !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot table,
+  body.attendance-printing #attendancePrintRoot thead,
+  body.attendance-printing #attendancePrintRoot tbody,
+  body.attendance-printing #attendancePrintRoot tr,
+  body.attendance-printing #attendancePrintRoot th,
+  body.attendance-printing #attendancePrintRoot td {
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    border: 1px solid #000 !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot thead {
+    display: table-header-group !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot tbody {
+    display: table-row-group !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot tr {
+    display: table-row !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot th,
+  body.attendance-printing #attendancePrintRoot td {
+    display: table-cell !important;
+    border: 1px solid #000 !important;
+    padding: 2px 3px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+    white-space: normal !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot th:first-child,
+  body.attendance-printing #attendancePrintRoot td:first-child {
+    width: 34mm !important;
+    text-align: left !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot td::before,
+  body.attendance-printing #attendancePrintRoot th::before {
+    content: none !important;
+    display: none !important;
+  }
+}
+
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.attendance-printing > :not(#attendancePrintRoot) {
+    display: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot,
+  body.attendance-printing #attendancePrintRoot * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+    transform: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot .print-report-page,
+  body.attendance-printing #attendancePrintRoot .print-attendance-report,
+  body.attendance-printing #attendancePrintRoot .print-weekly-section {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 0 3mm !important;
+    padding: 0 !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot table,
+  body.attendance-printing #attendancePrintRoot thead,
+  body.attendance-printing #attendancePrintRoot tbody,
+  body.attendance-printing #attendancePrintRoot tr,
+  body.attendance-printing #attendancePrintRoot th,
+  body.attendance-printing #attendancePrintRoot td {
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    border: 1px solid #000 !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot thead {
+    display: table-header-group !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot tbody {
+    display: table-row-group !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot tr {
+    display: table-row !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot th,
+  body.attendance-printing #attendancePrintRoot td {
+    display: table-cell !important;
+    border: 1px solid #000 !important;
+    padding: 2px 3px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+    white-space: normal !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot th:first-child,
+  body.attendance-printing #attendancePrintRoot td:first-child {
+    width: 34mm !important;
+    text-align: left !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot td::before,
+  body.attendance-printing #attendancePrintRoot th::before {
+    content: none !important;
+    display: none !important;
+  }
+}
+
 @media (max-width: 768px) {
   html,
   body {
@@ -5849,6 +6137,77 @@ body {
 
   #attendancePrintRoot td::before,
   #attendancePrintRoot th::before {
+    content: none !important;
+    display: none !important;
+  }
+}
+
+@media print {
+  body.attendance-printing > :not(#attendancePrintRoot) {
+    display: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot,
+  body.attendance-printing #attendancePrintRoot * {
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #000 !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    transform: none !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    border: 1px solid #000 !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot thead {
+    display: table-header-group !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot tbody {
+    display: table-row-group !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot tr {
+    display: table-row !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot th,
+  body.attendance-printing #attendancePrintRoot td {
+    display: table-cell !important;
+    border: 1px solid #000 !important;
+    padding: 2px 3px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+    white-space: normal !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot th:first-child,
+  body.attendance-printing #attendancePrintRoot td:first-child {
+    width: 34mm !important;
+    text-align: left !important;
+  }
+
+  body.attendance-printing #attendancePrintRoot td::before,
+  body.attendance-printing #attendancePrintRoot th::before {
     content: none !important;
     display: none !important;
   }
