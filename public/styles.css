@@ -3172,31 +3172,20 @@ tbody tr:hover {
   }
 
   .topbar {
-    position: static !important;
-    display: block !important;
-    height: auto !important;
-    min-height: 0 !important;
-    margin: 0 0 10px !important;
-    padding: 0 !important;
-    pointer-events: auto !important;
-    z-index: 1 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-
-  .topbar-actions {
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    display: flex !important;
-    justify-content: flex-end !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  .topbar-actions > :not(#backToClubsButton):not(#clubContextLabel):not(.top-club-logo):not(.user-area),
-  .user-area .user-badge {
     display: none !important;
+  }
+
+  .dashboard-hero,
+  .section-head,
+  .panel,
+  .table-card,
+  .attendance-report-panel {
+    margin-top: 0 !important;
+  }
+
+  .dashboard-hero {
+    padding: 14px !important;
+    gap: 12px !important;
   }
 
   #logoutButton.logout-nav {
@@ -3226,32 +3215,71 @@ tbody tr:hover {
 }
 
 @media print {
-  #appShell,
-  #printReport {
-    display: block !important;
+  body * {
+    visibility: hidden !important;
   }
 
-  #printReport,
-  #printReport * {
-    visibility: visible !important;
-  }
-
-  body > :not(#appShell),
-  .mobile-header,
-  .sidebar,
-  .sidebar-overlay,
-  .topbar,
-  .student-page-search,
-  .manual-attendance-panel,
-  .no-print,
-  button,
-  input,
-  select,
-  textarea {
+  body > :not(#attendancePrintRoot) {
     display: none !important;
   }
 
-  .print-report:empty {
+  #attendancePrintRoot,
+  #attendancePrintRoot * {
+    visibility: visible !important;
+  }
+
+  #attendancePrintRoot {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  #attendancePrintRoot:empty {
+    display: none !important;
+  }
+
+  #attendancePrintRoot table,
+  #attendancePrintRoot .print-attendance-matrix,
+  #attendancePrintRoot .print-weekly-table,
+  #attendancePrintRoot .print-daily-table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    border: 1px solid #000 !important;
+  }
+
+  #attendancePrintRoot thead {
+    display: table-header-group !important;
+  }
+
+  #attendancePrintRoot tbody {
+    display: table-row-group !important;
+  }
+
+  #attendancePrintRoot tr {
+    display: table-row !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #attendancePrintRoot th,
+  #attendancePrintRoot td {
+    display: table-cell !important;
+    border: 1px solid #000 !important;
+    padding: 2px 3px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+  }
+
+  #attendancePrintRoot td::before,
+  #attendancePrintRoot th::before {
+    content: none !important;
     display: none !important;
   }
 }
@@ -5721,30 +5749,6 @@ body {
   }
 
   .topbar {
-    position: static !important;
-    display: block !important;
-    height: auto !important;
-    min-height: 0 !important;
-    margin: 0 0 10px !important;
-    padding: 0 !important;
-    pointer-events: auto !important;
-    z-index: 1 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-
-  .topbar-actions {
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    display: flex !important;
-    justify-content: flex-end !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  .topbar-actions > :not(#backToClubsButton):not(#clubContextLabel):not(.top-club-logo):not(.user-area),
-  .user-area .user-badge {
     display: none !important;
   }
 
@@ -5775,32 +5779,71 @@ body {
 }
 
 @media print {
-  #appShell,
-  #printReport {
-    display: block !important;
+  body * {
+    visibility: hidden !important;
   }
 
-  #printReport,
-  #printReport * {
-    visibility: visible !important;
-  }
-
-  body > :not(#appShell),
-  .mobile-header,
-  .sidebar,
-  .sidebar-overlay,
-  .topbar,
-  .student-page-search,
-  .manual-attendance-panel,
-  .no-print,
-  button,
-  input,
-  select,
-  textarea {
+  body > :not(#attendancePrintRoot) {
     display: none !important;
   }
 
-  .print-report:empty {
+  #attendancePrintRoot,
+  #attendancePrintRoot * {
+    visibility: visible !important;
+  }
+
+  #attendancePrintRoot {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  #attendancePrintRoot:empty {
+    display: none !important;
+  }
+
+  #attendancePrintRoot table,
+  #attendancePrintRoot .print-attendance-matrix,
+  #attendancePrintRoot .print-weekly-table,
+  #attendancePrintRoot .print-daily-table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    border: 1px solid #000 !important;
+  }
+
+  #attendancePrintRoot thead {
+    display: table-header-group !important;
+  }
+
+  #attendancePrintRoot tbody {
+    display: table-row-group !important;
+  }
+
+  #attendancePrintRoot tr {
+    display: table-row !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #attendancePrintRoot th,
+  #attendancePrintRoot td {
+    display: table-cell !important;
+    border: 1px solid #000 !important;
+    padding: 2px 3px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+  }
+
+  #attendancePrintRoot td::before,
+  #attendancePrintRoot th::before {
+    content: none !important;
     display: none !important;
   }
 }

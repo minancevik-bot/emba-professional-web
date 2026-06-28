@@ -163,7 +163,7 @@
     attendanceResetConfirmInput: $("#attendanceResetConfirmInput"),
     confirmAttendanceResetButton: $("#confirmAttendanceResetButton"),
     cancelAttendanceResetButton: $("#cancelAttendanceResetButton"),
-    printReport: $("#printReport"),
+    printReport: $("#attendancePrintRoot"),
     paymentMonthFilter: $("#paymentMonthFilter"),
     paymentSearch: $("#paymentSearch"),
     paymentSearchButton: $("#paymentSearchButton"),
@@ -2258,6 +2258,24 @@
     `;
   }
 
+  function hasPrintableAttendanceReport() {
+    if (!els.printReport) return false;
+    const table = els.printReport.querySelector("table");
+    const rows = els.printReport.querySelectorAll("tbody tr");
+    return Boolean(table && rows.length);
+  }
+
+  async function printRenderedAttendanceReport() {
+    await new Promise((resolve) => window.setTimeout(resolve, 80));
+    if (!hasPrintableAttendanceReport()) {
+      if (els.printReport) els.printReport.innerHTML = "";
+      setNotice("Yazdırılacak rapor verisi bulunamadı.", true);
+      return;
+    }
+    window.print();
+    setNotice("");
+  }
+
   async function printAttendanceReport() {
     if (els.printReport) els.printReport.innerHTML = "";
     const reportType = els.reportType?.value || "daily";
@@ -2276,9 +2294,7 @@
           return;
         }
         renderWeeklyPrintReport(data);
-        await new Promise((resolve) => window.setTimeout(resolve, 80));
-        window.print();
-        setNotice("");
+        await printRenderedAttendanceReport();
       } catch (_error) {
         setNotice("Rapor çıktısı hazırlanırken hata oluştu.", true);
       }
@@ -2298,9 +2314,7 @@
         return;
       }
       renderPrintReport(data);
-      await new Promise((resolve) => window.setTimeout(resolve, 80));
-      window.print();
-      setNotice("");
+      await printRenderedAttendanceReport();
     } catch (_error) {
       setNotice("Rapor çıktısı hazırlanırken hata oluştu.", true);
     }
