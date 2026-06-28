@@ -51,7 +51,7 @@
     <div id="appShell" class="app-shell hidden">
       <div id="sidebarOverlay" class="sidebar-overlay" hidden></div>
       <header class="mobile-header">
-        <button id="mobileMenuButton" class="icon-button hamburger-menu" type="button" aria-label="Menüyü aç">☰</button>
+        <button id="mobileMenuButton" class="icon-button" type="button" aria-label="Menüyü aç">☰</button>
         <button id="mobileBrandHomeButton" class="brand-home mobile-brand-home" type="button" aria-label="Ana sayfa">
           <img src="/assets/kulupasist-logo.png" alt="Kulüp Asistanı logosu" onerror="this.hidden=true; this.nextElementSibling.hidden=false">
           <span class="fallback-logo small" hidden>KA</span>
@@ -81,9 +81,7 @@
           <button class="nav-button" data-view="backupView" data-permission="backup:read"><span>Raporlar</span></button>
         </nav>
         <div class="sidebar-footer">
-          <ul class="logout-menu">
-            <li><button id="logoutButton" class="nav-button logout-nav" type="button"><span>Çıkış Yap</span></button></li>
-          </ul>
+          <button id="logoutButton" class="nav-button logout-nav" type="button"><span>Çıkış</span></button>
         </div>
       </aside>
 

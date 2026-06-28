@@ -604,13 +604,6 @@
     document.body.classList.toggle("is-mobile-shell", isAuthenticated && window.matchMedia("(max-width: 768px)").matches);
   }
 
-  function syncPageScopedControls(viewId = state.activeView) {
-    const showStudentSearch = viewId === "studentsView";
-    document.querySelectorAll(".student-page-search").forEach((element) => {
-      element.style.display = showStudentSearch ? "" : "none";
-    });
-  }
-
   function expandSearch(input) {
     const box = input?.closest(".expanding-search, .search-box, .attendance-toolbar");
     if (!input || !box) return;
@@ -688,7 +681,6 @@
     state.openStudentId = null;
     closeMobileMenu();
     syncBodyShellState("login");
-    syncPageScopedControls("");
     document.body.classList.remove("auth-loading");
     els.loginView.classList.remove("hidden");
     els.appShell.classList.add("hidden");
@@ -699,7 +691,6 @@
     state.user = user;
     closeMobileMenu();
     syncBodyShellState("login");
-    syncPageScopedControls("");
     document.body.classList.remove("auth-loading");
     els.loginView.classList.remove("hidden");
     els.appShell.classList.add("hidden");
@@ -895,7 +886,6 @@
     updateClubContext();
     closeMobileMenu();
     syncBodyShellState("authenticated");
-    syncPageScopedControls(viewId);
     $$(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
     $$(".nav-button").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
 
@@ -1824,8 +1814,8 @@
               <span>${escapeHtml(student.parentName || "-")} · ${escapeHtml(student.phone || "-")}</span>
             </div>
             <div class="attendance-actions">
-              <button class="att-btn attendance-status-button present ${student.selectedStatus === "present" ? "active selected" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="present" type="button" aria-pressed="${student.selectedStatus === "present"}">Geldi</button>
-              <button class="att-btn attendance-status-button absent ${student.selectedStatus === "absent" ? "active selected" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="absent" type="button" aria-pressed="${student.selectedStatus === "absent"}">Gelmedi</button>
+              <button class="attendance-status-button ${student.selectedStatus === "present" ? "selected present" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="present" type="button" aria-pressed="${student.selectedStatus === "present"}">Geldi</button>
+              <button class="attendance-status-button ${student.selectedStatus === "absent" ? "selected absent" : ""}" data-action="mark-attendance" data-id="${student.id}" data-status="absent" type="button" aria-pressed="${student.selectedStatus === "absent"}">Gelmedi</button>
             </div>
           </article>
         `;
@@ -3047,11 +3037,6 @@
   });
   els.globalSearchButton?.addEventListener("click", runStudentSearch);
   els.globalSearchClearButton?.addEventListener("click", clearStudentSearch);
-  $("#addSearch")?.addEventListener("keyup", (event) => {
-    const resultList = $("#addSearchResults") || $("#manualAttendanceResults");
-    if (!resultList) return;
-    resultList.style.display = event.target.value.trim().length >= 2 ? "" : "none";
-  });
 
   els.newStudentButton.addEventListener("click", () => openStudentEditor());
   els.cancelStudentButton.addEventListener("click", () => {
